@@ -2438,29 +2438,88 @@ async function shrinkImage(file, maxSide, q){
 }
 
 // Gemini を呼ぶ共通部分
-async function callGemini(parts){
+/* AIの返答が途中で切れたり、文字列の中に生の改行が混ざったりすると
+   JSON.parse が失敗する。できる範囲で直してから読む。 */
+function repairJson(t){
+  let out = "", inStr = false, esc = false;
+  const stack = [];
+  for(const ch of t){
+    if(inStr){
+      if(esc){ esc = false; }
+      else if(ch === "\\"){ esc = true; }
+      else if(ch === '"'){ inStr = false; }
+      else if(ch === "\n" || ch === "\r"){ out += "\\n"; continue; }   // 生の改行を逃がす
+    }else{
+      if(ch === '"') inStr = true;
+      else if(ch === "{" || ch === "[") stack.push(ch === "{" ? "}" : "]");
+      else if(ch === "}" || ch === "]") stack.pop();
+    }
+    out += ch;
+  }
+  if(esc) out = out.slice(0, -1);
+  if(inStr) out += '"';                         // 閉じていない文字列を閉じる
+  out = out.replace(/,\s*$/, "");
+  while(stack.length) out += stack.pop();       // 閉じていない括弧を補う
+  return out.replace(/,(\s*[}\]])/g, "$1");     // 余分なカンマを外す
+}
+function parseJsonLoose(raw){
+  let t = String(raw||"").replace(/```json/gi,"").replace(/```/g,"").trim();
+  const i = t.indexOf("{");
+  if(i < 0) throw new Error("JSONが見つかりませんでした");
+  t = t.slice(i);
+  const tryParse = x => { try{ return JSON.parse(x); }catch(e){ return null; } };
+
+  let d = tryParse(t);                                   // ①そのまま
+  if(d) return d;
+  const last = t.lastIndexOf("}");
+  if(last > 0){ d = tryParse(t.slice(0, last+1)); if(d) return d; }   // ②末尾の余計な文字を落とす
+  d = tryParse(repairJson(t));                           // ③切れている所を補う
+  if(d) return d;
+  const e = new Error("読み取り結果が途中で切れました。もう一度試すか、1枚ずつ読ませてみてください");
+  e.raw = t.slice(0, 300);
+  throw e;
+}
+
+async function callGemini(parts, jsonMode){
   const key = (cfg.aiKey||"").trim();
   if(!key) throw new Error("設定画面でAPIキーを登録してください");
   const model = (cfg.aiModel||CFG_DEF.aiModel).trim();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  let res;
-  try{
-    res = await fetch(url, {
-      method:"POST",
-      headers:{"Content-Type":"application/json","x-goog-api-key":key},
-      body: JSON.stringify({contents:[{parts}]})
-    });
-  }catch(e){ throw new Error("通信できませんでした。圏外か、ブラウザがブロックした可能性があります"); }
+  // JSONで欲しいときは形式を指定し、途中で切れないよう上限も広げる
+  const body = {contents:[{parts}]};
+  if(jsonMode) body.generationConfig = {response_mime_type:"application/json", max_output_tokens:4096};
+
+  async function send(b){
+    try{
+      return await fetch(url, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-goog-api-key":key},
+        body: JSON.stringify(b)
+      });
+    }catch(e){ throw new Error("通信できませんでした。圏外か、ブラウザがブロックした可能性があります"); }
+  }
+  let res = await send(body);
+  // 古いモデルだと形式指定を受け付けないことがあるので、その時は外して再送
+  if(!res.ok && res.status===400 && jsonMode){
+    res = await send({contents:[{parts}]});
+  }
   if(!res.ok){
     const t = await res.text().catch(()=> "");
-    if(res.status===400 || res.status===403) throw new Error(`APIキーかモデル名を確認してください（${res.status}）`);
+    if(res.status===403) throw new Error("APIキーを確認してください（403）");
+    if(res.status===400) throw new Error(`モデル名かキーを確認してください（400）${t.slice(0,80)}`);
     if(res.status===429) throw new Error("回数制限に達しました。少し待ってください（429）");
+    if(res.status>=500) throw new Error(`Google側が混み合っています。少し待って試してください（${res.status}）`);
     throw new Error(`エラー ${res.status}：${t.slice(0,120)}`);
   }
   const d = await res.json();
-  const ps = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+  const cand = (d.candidates && d.candidates[0]) || {};
+  const ps = (cand.content && cand.content.parts) || [];
   const text = ps.map(p=>p.text||"").join("").trim();
-  if(!text) throw new Error("応答が空でした");
+  if(!text){
+    if(cand.finishReason === "MAX_TOKENS") throw new Error("返答が長すぎて途中で切れました。1枚ずつ読ませてみてください");
+    if(cand.finishReason === "SAFETY") throw new Error("この画像は読み取れませんでした");
+    throw new Error("応答が空でした。もう一度試してください");
+  }
   return text;
 }
 
@@ -2479,11 +2538,8 @@ async function aiReadOffer(file){
 ・確信が持てない値は0にして、confを下げてください。
 ・dropArea は市区町村・町名まで、dropBuilding は建物名と棟番号までにしてください。
 ・部屋番号・階数・氏名・電話番号は、画面に写っていても絶対に出力しないでください。`;
-  const raw = await callGemini([{inline_data:{mime_type:img.mime, data:img.b64}}, {text:prompt}]);
-  const cleaned = raw.replace(/```json/gi,"").replace(/```/g,"").trim();
-  const m = cleaned.match(/\{[\s\S]*\}/);
-  if(!m) throw new Error("読み取り結果を解釈できませんでした");
-  return JSON.parse(m[0]);
+  const raw = await callGemini([{inline_data:{mime_type:img.mime, data:img.b64}}, {text:prompt}], true);
+  return parseJsonLoose(raw);
 }
 
 /* スクショに写っていない項目を自分の実績から埋める */
@@ -2615,10 +2671,8 @@ ${multi ? `画像が${imgs.length}枚あります。アプリの画面なら、�
 ・確信が持てない値は0にして、confを下げてください。
 ・dropArea は市区町村・町名まで、dropBuilding は建物名と棟番号までにしてください。
 ・部屋番号・階数・氏名・電話番号は、画面に写っていても絶対に出力しないでください。読めない項目は空文字にします。`;
-  const raw = await callGemini([...imgs.map(i=>({inline_data:{mime_type:i.mime, data:i.b64}})), {text:prompt}]);
-  const m = raw.replace(/```json/gi,"").replace(/```/g,"").trim().match(/\{[\s\S]*\}/);
-  if(!m) throw new Error("読み取り結果を解釈できませんでした");
-  const r = JSON.parse(m[0]);
+  const raw = await callGemini([...imgs.map(i=>({inline_data:{mime_type:i.mime, data:i.b64}})), {text:prompt}], true);
+  const r = parseJsonLoose(raw);
   r._imgs = imgs.length;
   // 旧形式（quest単体）で返ってきた場合も配列に揃える
   if(!Array.isArray(r.quests)) r.quests = r.quest ? [r.quest] : [];
@@ -2658,7 +2712,9 @@ $("shFile").onchange = async ev=>{
     $("shotLog").textContent = shotSession>1 ? `このパネルで${shotSession}枚を処理しました` : "";
     sndEnd(); vibe(40);
   }catch(e){
-    box.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span></div>`;
+    box.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>` +
+      (e.raw?`<br><br><span class="label">受け取った内容の先頭：<br>${esc(e.raw.slice(0,160))}…</span>`:"") +
+      `</div>`;
     sndBad();
   }
 };
