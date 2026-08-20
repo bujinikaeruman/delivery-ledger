@@ -751,7 +751,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       ⑥ クエスト報酬を終了日に全額計上せず、達成に効いた配達日へ按分
     </div>
   </div>
-  <div class="foot">フーデリ採算くん ／ AI 無事カエルマン</div>
+  <div class="foot">フーデリ採算くん <span id="verTag"></span><br>AI 無事カエルマン</div>
 </section>
 
 </main>
@@ -2487,7 +2487,7 @@ async function callGemini(parts, jsonMode){
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   // JSONで欲しいときは形式を指定し、途中で切れないよう上限も広げる
   const body = {contents:[{parts}]};
-  if(jsonMode) body.generationConfig = {response_mime_type:"application/json", max_output_tokens:4096};
+  if(jsonMode) body.generationConfig = {response_mime_type:"application/json", max_output_tokens:8192};
 
   async function send(b){
     try{
@@ -2511,7 +2511,14 @@ async function callGemini(parts, jsonMode){
     if(res.status>=500) throw new Error(`Google側が混み合っています。少し待って試してください（${res.status}）`);
     throw new Error(`エラー ${res.status}：${t.slice(0,120)}`);
   }
-  const d = await res.json();
+  // 応答そのものが途中で切れることがあるので、素直にparseできなければ復旧を試みる
+  const bodyText = await res.text();
+  let d;
+  try{ d = JSON.parse(bodyText); }
+  catch(e){
+    try{ d = parseJsonLoose(bodyText); }
+    catch(e2){ throw new Error("応答が途中で切れました。電波の良いところで、1枚ずつ試してください"); }
+  }
   const cand = (d.candidates && d.candidates[0]) || {};
   const ps = (cand.content && cand.content.parts) || [];
   const text = ps.map(p=>p.text||"").join("").trim();
@@ -2536,6 +2543,7 @@ async function aiReadOffer(file){
 ・報酬は「¥」やカンマを外した数値だけ。基本料と各種インセンティブが分かれて書かれている場合は合計。
 ・距離が「店まで」と「店から先」に分かれている場合は合計。
 ・確信が持てない値は0にして、confを下げてください。
+・note は30文字以内。改行は使わず、1行で書いてください。商品の明細は出力しないでください。
 ・dropArea は市区町村・町名まで、dropBuilding は建物名と棟番号までにしてください。
 ・部屋番号・階数・氏名・電話番号は、画面に写っていても絶対に出力しないでください。`;
   const raw = await callGemini([{inline_data:{mime_type:img.mime, data:img.b64}}, {text:prompt}], true);
@@ -2579,7 +2587,9 @@ $("ofFile").onchange = async ev=>{
   const t0 = Date.now();
   out.innerHTML = `<div class="note info" style="margin:0 0 12px"><span class="spin"></span>読み取り中…</div>`;
   try{
-    const r = await aiReadOffer(f);
+    let r;
+    try{ r = await aiReadOffer(f); }
+    catch(err){ await new Promise(res=>setTimeout(res,900)); r = await aiReadOffer(f); }
     const secs = ((Date.now()-t0)/1000).toFixed(1);
 
     // 読み取れた値を判定フォームに流し込む
@@ -2619,6 +2629,45 @@ const KIND_NAME = {
   offer:"案件（オファー）", delivery:"配達の報酬明細", earnings:"報酬サマリー",
   nav:"ナビ・マップ", quest:"クエスト", receipt:"レシート", notice:"お知らせ", unknown:"判別できず"
 };
+
+/* AIの返答が壊れていても、できるだけ拾う。
+   よくあるのは、文字列の中に改行がそのまま入っていて
+   JSONとして読めなくなるパターン。あとは途中で切れている場合。 */
+function parseLooseJson(raw){
+  let t = String(raw||"").replace(/```json/gi,"").replace(/```/g,"").trim();
+  const st = t.indexOf("{");
+  if(st < 0) return null;
+  t = t.slice(st);
+  try{ return JSON.parse(t); }catch(e){}
+
+  // 1文字ずつ見て、文字列の中の生の改行などを直しながら括弧を閉じる
+  let out = "", inStr = false, esc = false;
+  const stack = [];
+  for(const ch of t){
+    if(esc){ out += ch; esc = false; continue; }
+    if(ch === "\\"){ out += ch; if(inStr) esc = true; continue; }
+    if(ch === '"'){ out += ch; inStr = !inStr; continue; }
+    if(inStr){
+      if(ch === "\n"){ out += "\\n"; continue; }
+      if(ch === "\r"){ out += "\\r"; continue; }
+      if(ch === "\t"){ out += "\\t"; continue; }
+      if(ch.charCodeAt(0) < 32){ continue; }   // その他の制御文字は落とす
+      out += ch; continue;
+    }
+    if(ch === "{" || ch === "["){ stack.push(ch); }
+    if(ch === "}" || ch === "]"){ stack.pop(); }
+    out += ch;
+  }
+  if(esc) out = out.slice(0,-1);
+  if(inStr) out += '"';                                  // 閉じ忘れの引用符
+  out = out.replace(/,\s*$/,"");                          // 末尾のカンマ
+  out = out.replace(/,?\s*"[^"]*"\s*:\s*$/,"");           // 値が来ないまま切れたキー
+  out = out.replace(/,\s*$/,"");
+  while(stack.length){                                    // 開いたままの括弧を閉じる
+    out += (stack.pop() === "[") ? "]" : "}";
+  }
+  try{ return JSON.parse(out); }catch(e){ return null; }
+}
 
 async function aiReadShot(files){
   const imgs = [];
@@ -2668,9 +2717,13 @@ ${multi ? `画像が${imgs.length}枚あります。アプリの画面なら、�
 ・receipts は、1枚の写真に複数のレシートが写っている場合や、画像が複数ある場合、レシート1枚につき1要素として全部入れてください。合計を1つにまとめないこと。
 ・receipts の category は、飲食店=food、コンビニ=convenience、ガソリン・充電=fuel、自転車やバイクの部品・修理=vehicle、通信費や備品=comm、それ以外=other にしてください。
 ・読み取れなかったレシートがあれば、その枚数を note に書いてください。
+・該当しない項目のキーは省略してかまいません。読み取れた項目だけを短く返してください。
 ・確信が持てない値は0にして、confを下げてください。
 ・dropArea は市区町村・町名まで、dropBuilding は建物名と棟番号までにしてください。
-・部屋番号・階数・氏名・電話番号は、画面に写っていても絶対に出力しないでください。読めない項目は空文字にします。`;
+・部屋番号・階数・氏名・電話番号は、画面に写っていても絶対に出力しないでください。読めない項目は空文字にします。
+・note は30文字以内で1行。改行は使わないでください。
+・レシートの商品明細（品名の一覧）は出力しないでください。必要なのは店名・合計金額・日時・カテゴリだけです。
+・summary 以外の項目に長い文章を入れないでください。`;
   const raw = await callGemini([...imgs.map(i=>({inline_data:{mime_type:i.mime, data:i.b64}})), {text:prompt}], true);
   const r = parseJsonLoose(raw);
   r._imgs = imgs.length;
@@ -2705,15 +2758,23 @@ $("shFile").onchange = async ev=>{
   const t0 = Date.now();
   box.innerHTML = `<div class="card"><span class="spin"></span>${files.length>1?files.length+"枚を":""}読み取り中…${files.length>2?"（枚数が多いので少しかかります）":""}</div>`;
   try{
-    const r = await aiReadShot(files);
+    let r;
+    try{ r = await aiReadShot(files); }
+    catch(err){
+      // 一時的な切れは多いので、1回だけ黙って読み直す
+      box.innerHTML = `<div class="card"><span class="spin"></span>読み直しています…</div>`;
+      await new Promise(res=>setTimeout(res,900));
+      r = await aiReadShot(files);
+    }
     r._secs = ((Date.now()-t0)/1000).toFixed(1);
     shotSession += files.length;
     renderShot(r);
     $("shotLog").textContent = shotSession>1 ? `このパネルで${shotSession}枚を処理しました` : "";
     sndEnd(); vibe(40);
   }catch(e){
-    box.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>` +
-      (e.raw?`<br><br><span class="label">受け取った内容の先頭：<br>${esc(e.raw.slice(0,160))}…</span>`:"") +
+    box.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>
+      <br><span class="label">枚数を減らす／電波の良い場所で試す／明るいところで撮り直す、で通ることが多いです。</span>` +
+      (e.raw?`<br><br><span class="label" style="word-break:break-all;opacity:.7">受け取った内容の先頭：<br>${esc(String(e.raw).slice(0,160))}…</span>`:"") +
       `</div>`;
     sndBad();
   }
@@ -3218,6 +3279,7 @@ function renderAi(){ renderAiHist(); }
    設定・入出力
    ========================================================= */
 function renderSettings(){
+  if($("verTag")) $("verTag").textContent = APP_VER;
   $("cfgHrGo").value=cfg.hrGo; $("cfgHrCond").value=cfg.hrCond;
   $("cfgKmGo").value=cfg.kmGo; $("cfgKmCond").value=cfg.kmCond;
   $("cfgWait").value=cfg.waitWarnMin; $("cfgMin").value=cfg.minSamples;
@@ -3310,6 +3372,7 @@ $("wipe").onclick = ()=>{
 /* =========================================================
    共有
    ========================================================= */
+const APP_VER = "v21";
 const APP_URL = "https://bujinikaeruman.github.io/delivery-ledger/";
 async function shareApp(){
   const text =
