@@ -80,6 +80,14 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
 .signal{border-radius:16px;padding:18px var(--pad);text-align:center;border:2px solid;margin-bottom:12px;transition:.2s}
 .signal .verdict{font-size:30px;font-weight:800;letter-spacing:.06em;line-height:1.2}
 .signal .why{font-size:12px;margin-top:6px;opacity:.85}
+.signal .sigGo{
+  display:none;margin-top:12px;padding-top:10px;border-top:1px solid currentColor;
+  font-size:13px;font-weight:800;letter-spacing:.04em;opacity:.9;
+}
+.signal.tappable{cursor:pointer}
+.signal.tappable .sigGo{display:block}
+.signal.tappable:active{transform:scale(.985)}
+body.big .signal .sigGo{font-size:15px}
 .sig-go{border-color:var(--green);background:rgba(47,184,138,.13);color:var(--green)}
 .sig-cond{border-color:var(--amber);background:rgba(240,180,41,.13);color:var(--amber)}
 .sig-no{border-color:var(--red);background:rgba(232,80,91,.13);color:var(--red)}
@@ -438,9 +446,10 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
 <!-- ========== 案件チェック ========== -->
 <section class="view" id="v-scan">
-  <div class="signal sig-idle" id="sig">
+  <div class="signal sig-idle" id="sig" role="button" tabindex="0">
     <div class="verdict" id="sigV">条件を入力</div>
     <div class="why" id="sigW">報酬と距離を入れると判定します</div>
+    <div class="sigGo" id="sigGo">タップで計測を開始 →</div>
   </div>
   <div id="scanBonus"></div>
 
@@ -1328,6 +1337,7 @@ function calcScan(){
 
   if(fee<=0 || (km<=0 && min<=0)){
     sig.className = "signal sig-idle";
+    sig.dataset.kind = "";
     $("sigV").textContent = "条件を入力";
     $("sigW").textContent = "報酬と距離を入れると判定します";
     setGauge("gHr",0,cfg.hrGo,"円/時"); setGauge("gKm",0,cfg.kmGo,"円/km");
@@ -1338,7 +1348,9 @@ function calcScan(){
   const pk = km>0 ? feeEff/km : 0;
   const j = judge(hr,pk);
 
-  sig.className = "signal "+j.c;
+  sig.className = "signal tappable "+j.c;
+  sig.dataset.kind = j.k;
+  $("sigGo").textContent = j.k==="no" ? "受けるならタップ →" : "タップで計測を開始 →";
   $("sigV").textContent = j.t;
   $("sigW").textContent = `${Math.round(hr).toLocaleString()}円/時 ・ ${Math.round(pk)}円/km ・ 拘束${Math.round(min)}分 ・ ${r1(km)}km`
     + (bn.sum>0 ? `（実効${Math.round(feeEff).toLocaleString()}円）` : "");
@@ -1467,9 +1479,13 @@ function renderStoreInsight(){
    店名・報酬・距離・エリア・建物が最初から入るので、
    保存した時点で入力が完了する。想定値も一緒に持たせて、
    あとで実測と突き合わせる。 */
-$("toQuick").onclick = ()=>{
+function startFromScan(fromSignal){
   const fee = n($("sFee").value);
   if(fee<=0){ toast("報酬を入れてください"); return; }
+  // 見送る判定のときだけ、受けるつもりか確認する
+  if(fromSignal && $("sig").dataset.kind === "no"){
+    if(!confirm("「見送る」判定の案件です。この案件を受けて計測を始めますか？")) return;
+  }
   qk.plan = {
     storeName: $("sStore").value.trim(),
     dropArea: cleanArea($("sArea").value),
@@ -1488,7 +1504,9 @@ $("toQuick").onclick = ()=>{
   $("qkFee").value = fee || "";
   openQuick(true);
   toast("案件を引き継ぎました。店に着いたら押してください");
-};
+}
+$("toQuick").onclick = ()=> startFromScan(false);
+$("sig").onclick = ()=>{ if($("sig").classList.contains("tappable")) startFromScan(true); };
 
 $("toAdd").onclick = ()=>{
   resetAddForm();

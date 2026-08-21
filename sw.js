@@ -1,6 +1,6 @@
 /* 配達採算くん Service Worker
    更新するときは CACHE の版番号（v1 → v2 …）を上げてください */
-const CACHE = "delivery-ledger-v22";
+const CACHE = "delivery-ledger-v23";
 const FILES = ["./", "./index.html", "./manifest.json"];
 
 // インストール時にキャッシュへ格納
