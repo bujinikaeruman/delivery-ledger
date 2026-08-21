@@ -344,13 +344,19 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 #guideBox ol{margin:0 0 14px;padding-left:1.2em;font-size:14px}
 #guideBox li{margin-bottom:9px}
 
-/* 計測中バナー */
-#liveBar{
-  display:none;background:rgba(240,180,41,.15);border:1px solid var(--amber);border-radius:12px;
-  padding:12px;margin-bottom:12px;align-items:center;gap:10px;
+/* 計測中の表示。どの画面にいても出る */
+#liveDock{
+  display:none;position:fixed;left:10px;right:10px;z-index:40;
+  bottom:calc(72px + env(safe-area-inset-bottom));
+  background:var(--amber);color:#1A1204;border:none;border-radius:14px;
+  padding:12px 14px;font-family:inherit;cursor:pointer;
+  align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.5);
 }
-#liveBar.on{display:flex}
-#liveBar .t{flex:1;font-size:14px;font-weight:800;color:var(--amber)}
+#liveDock.on{display:flex}
+#liveDock .dt{font-size:14px;font-weight:800;white-space:nowrap}
+#liveDock .de{font-size:19px;font-weight:800;margin-left:auto;font-variant-numeric:tabular-nums}
+#liveDock .da{font-size:11px;font-weight:700;opacity:.7;white-space:nowrap}
+#liveDock.warn{background:var(--red);color:#fff}
 #closedBar{
   display:none;background:rgba(47,184,138,.13);border:1px solid var(--green);border-radius:12px;
   padding:12px;margin-bottom:12px;align-items:center;gap:10px;
@@ -358,7 +364,6 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 #closedBar.on{display:flex}
 #closedBar .t{flex:1;font-size:14px;font-weight:800;color:var(--green)}
 #closedBar button{background:var(--green);color:#04231A;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer}
-#liveBar button{background:var(--amber);color:#1A1204;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer}
 
 /* お知らせ要約 */
 #aiOut{white-space:pre-wrap;font-size:14px;line-height:1.85}
@@ -404,7 +409,6 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="tdSum"></div>
   <div id="tdQuest"></div>
 
-  <div id="liveBar"><div class="t">計測中</div><button id="liveBack">戻る</button></div>
   <div id="closedBar"><div class="t">今日は締め済み</div><button id="reopenBtn">🔄 再開</button></div>
   <div id="tdDrafts"></div>
   <input id="shFile" type="file" accept="image/*" multiple style="display:none">
@@ -499,6 +503,11 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
 <!-- ========== 記録 ========== -->
 <section class="view" id="v-add">
+  <input id="adFile" type="file" accept="image/*" multiple style="display:none">
+  <button class="btn primary" id="adShot" style="margin-bottom:6px">📸 スクショから埋める</button>
+  <div class="label" style="text-align:center;margin-bottom:12px">案件画面・報酬明細のスクショから、店名・報酬・距離を入れます</div>
+  <div id="adShotOut"></div>
+
   <div class="card">
     <h2>実測タイマー</h2>
     <div class="grid2">
@@ -765,7 +774,6 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <option value="rocket-now">Rocket Now</option>
       <option value="other">その他</option>
     </select>
-    <button id="qUndo">1つ戻す</button>
     <button id="qClose">戻る</button>
   </div>
   <div id="qPlan"></div>
@@ -796,11 +804,12 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="qLog"></div>
   <div id="qLoss">
     <div id="qLossBox">
-      <div class="lossTtl">この時間はどうなった？</div>
+      <div class="lossTtl">計測をやめます。この時間は？</div>
       <button class="lossBtn" data-loss="cancel">店都合のキャンセル</button>
       <button class="lossBtn" data-loss="noshow">客が出てこない・不在</button>
       <button class="lossBtn" data-loss="wrong">場所が違った・道に迷った</button>
       <button class="lossBtn" data-loss="other">その他のロス</button>
+      <button class="lossBtn ghost" id="qUndo">押し間違い（1つ戻す）</button>
       <button class="lossBtn ghost" data-loss="discard">記録せずに破棄</button>
       <button class="lossBtn ghost" id="qLossCancel">やめる</button>
     </div>
@@ -869,6 +878,8 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <button class="btn primary" id="guideOk">はじめる</button>
   </div>
 </div>
+
+<button id="liveDock"><span class="dt">計測中</span><span class="de num">0:00</span><span class="da">タップで戻る</span></button>
 
 <div id="toast"></div>
 
@@ -1202,7 +1213,9 @@ function applyDisplay(){
   if($("tglChime")) $("tglChime").textContent = "1分ごとのお知らせ：" + (cfg.chime?"オン":"オフ");
   // AI機能はキーを入れた人にだけ出す（キーが無い人にはボタン自体を見せない）
   const hasKey = !!(cfg.aiKey||"").trim();
-  ["goShot","goAi","ofPick"].forEach(id=>{ if($(id)) $(id).style.display = hasKey ? "block" : "none"; });
+  ["goShot","goAi","ofPick","adShot"].forEach(id=>{ if($(id)) $(id).style.display = hasKey ? "block" : "none"; });
+  const adHint = $("adShot") && $("adShot").nextElementSibling;
+  if(adHint) adHint.style.display = hasKey ? "block" : "none";
   if(!hasKey && $("ofOut")) $("ofOut").innerHTML = "";
 }
 $("btnDay").onclick = ()=>{ cfg.dayMode = !cfg.dayMode; saveCfg(); applyDisplay(); };
@@ -1270,14 +1283,6 @@ function renderToday(){
     cb.classList.add("on");
     cb.querySelector(".t").textContent = `今日は締め済み（${list.length}件 ${yen(fee)}）`;
   }else cb.classList.remove("on");
-
-  // 計測が途中なら目立つように出す
-  const lb = $("liveBar");
-  if(qBusy()){
-    lb.classList.add("on");
-    const p = qCount("P"), d = qCount("D");
-    lb.querySelector(".t").textContent = `計測中：ピック${p} ／ ドロップ${d}${qk.cur?"（区間進行中）":""}`;
-  }else lb.classList.remove("on");
 
   // ワンタップ記録で時刻だけ取った未入力レコードの案内
   const drafts = entries.filter(e=>e.draft).sort((a,b)=> new Date(a.completedAt)-new Date(b.completedAt));
@@ -1500,6 +1505,7 @@ let tm = {pick:{start:null,sec:null}, hand:{start:null,sec:null}};
 let editingId = null;   // 既存レコードを編集中ならそのid
 function setLocalNow(){ $("aWhen").value = toLocalInput(new Date()); }
 function resetAddForm(){
+  if($("adShotOut")) $("adShotOut").innerHTML = "";
   ["aStore","aArea","aBldName","aFee","aDist","aRet","aDur","aRetMin","aNote"].forEach(id=> $(id).value="");
   $("aBld").value=""; editingId = null;
   $("saveDlv").textContent = "この配達を保存";
@@ -1684,6 +1690,31 @@ function renderQuickStores(){
   });
 }
 
+/* 計測中はどの画面にいても分かるようにする。
+   タップすれば計測画面に戻る。 */
+function paintDock(){
+  const d = $("liveDock");
+  const busy = qBusy();
+  const open = $("quick").classList.contains("on");
+  if(!busy || open){ d.classList.remove("on"); return; }
+  d.classList.add("on");
+  const p = qCount("P"), dr = qCount("D");
+  let label, from, warn = false;
+  if(qk.cur){
+    label = ({M:"店へ移動中", P:"受取待ち", D:"受渡中"})[qk.cur.type];
+    from = qk.cur.start;
+    warn = qk.cur.type==="P" && (Date.now()-from)/60000 >= cfg.waitWarnMin;
+  }else{
+    label = `計測中 ピック${p}／ドロップ${dr}`;
+    from = qk.legs.length ? qk.legs[0].start : Date.now();
+  }
+  d.classList.toggle("warn", warn);
+  d.querySelector(".dt").textContent = label;
+  d.querySelector(".de").textContent = mmss((Date.now()-from)/1000);
+}
+$("liveDock").onclick = ()=> openQuick(true);
+setInterval(paintDock, 1000);
+
 function applyQuickTheme(){ $("quick").setAttribute("data-svc", $("qkSvc").value); }
 
 function paintQuick(){
@@ -1839,9 +1870,11 @@ $("qDrop").onclick   = ()=> qStart("D");
 $("qMain").onclick   = qEnd;
 $("qSave").onclick   = qSaveBatch;
 $("qUndo").onclick   = ()=>{
-  if(qk.cur) qk.cur = null;
-  else qk.legs.pop();
-  sndBad(); paintQuick(); saveState();
+  if(qk.cur) qk.cur = null;      // 進行中の区間を取り消す
+  else qk.legs.pop();            // 直前に確定した区間を取り消す
+  $("qLoss").classList.remove("on");
+  sndBad(); toast("1つ戻しました");
+  paintQuick(); saveState();
 };
 $("qClose").onclick = closeQuick;
 $("qMemoBtn").onclick = ()=>{
@@ -1852,7 +1885,6 @@ $("qMemoBtn").onclick = ()=>{
 $("qkFee").addEventListener("input", saveState);
 $("qkStore").addEventListener("input", ()=>{ renderQuickStores(); saveState(); });
 $("qkSvc").addEventListener("input", ()=>{ applyQuickTheme(); saveState(); });
-$("liveBack").onclick = ()=> openQuick(true);
 $("reopenBtn").onclick = ()=>{
   cfg.closedOn = ""; saveCfg(); sndStart(); vibe(30);
   toast("稼働を再開しました");
@@ -1946,6 +1978,55 @@ $("qLossBox").addEventListener("click", ev=>{
 });
 $("cashClose").onclick = ()=> $("cash").classList.remove("on");
 ["cashAmt","cashGot"].forEach(id=> $(id).addEventListener("input", renderCash));
+
+/* 記録画面をスクショから埋める。
+   時刻はワンタップ記録で取れているので、
+   足りない店名・報酬・距離だけをスクショから補う。 */
+$("adShot").onclick = ()=> $("adFile").click();
+$("adFile").onchange = async ev=>{
+  const files = [...ev.target.files]; ev.target.value = "";
+  if(!files.length) return;
+  const out = $("adShotOut");
+  const t0 = Date.now();
+  out.innerHTML = `<div class="note info" style="margin:0 0 12px"><span class="spin"></span>読み取り中…</div>`;
+  try{
+    let r;
+    try{ r = await aiReadShot(files); }
+    catch(err){ await new Promise(res=>setTimeout(res,900)); r = await aiReadShot(files); }
+
+    const km = n(r.km), fee = n(r.fee), mins = n(r.minutes);
+    const filled = [];
+
+    if(r.service && SVC_NAME[r.service]){ $("aSvc").value = r.service; }
+    if(r.store){ $("aStore").value = r.store; filled.push("店名"); }
+    const ar = cleanArea(r.dropArea||"");
+    if(ar){ $("aArea").value = ar; filled.push("エリア"); }
+    const bd = cleanBuilding(r.dropBuilding||"");
+    if(bd){
+      $("aBldName").value = bd; filled.push("建物");
+      if(!$("aBld").value){ const g = guessBldType(bd); if(g) $("aBld").value = g; }
+    }
+    if(fee>0){ $("aFee").value = fee; filled.push("報酬"); }
+    if(km>0){ $("aDist").value = km; filled.push("距離"); }
+    // 走行時間はタイマーの実測を優先し、空のときだけ補う
+    if(!n($("aDur").value)){
+      const sp = ridingSpeed();
+      const v = mins>0 ? mins : (km>0 ? Math.max(1, Math.round(km/sp.v*60)) : 0);
+      if(v>0){ $("aDur").value = v; filled.push(mins>0?"所要":"所要（推定）"); }
+    }
+
+    calcAddPreview(); saveState(); sndEnd(); vibe(40);
+    const secs = ((Date.now()-t0)/1000).toFixed(1);
+    out.innerHTML = filled.length
+      ? `<div class="note good" style="margin:0 0 12px"><b>${secs}秒で入力</b>　${esc(filled.join("・"))}を埋めました
+         <br><span class="label">${KIND_NAME[r.kind]||""}として読み取り。数字は下の欄で直せます。</span></div>`
+      : `<div class="note warn" style="margin:0 0 12px">埋められる項目がありませんでした。
+         <br><span class="label">案件画面か報酬明細のスクショを選んでください。</span></div>`;
+  }catch(e){
+    out.innerHTML = `<div class="note warn" style="margin:0 0 12px"><span class="red">${esc(e.message)}</span></div>`;
+    sndBad();
+  }
+};
 
 /* =========================================================
    収支（クエスト・支出）
