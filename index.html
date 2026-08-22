@@ -557,7 +557,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <div class="sigGo" id="sigGo">タップで計測を開始 →</div>
   </div>
   <div id="scanBonus"></div>
-  <button class="btn skip" id="toSkip" style="margin-bottom:10px">見送った（記録だけ残す）</button>
+  <button class="btn skip" id="toSkip" style="margin-bottom:10px">見送り（記録だけ残す）</button>
 
   <button class="btn primary" id="ofPick" style="margin-bottom:10px">📸 スクショを読ませる</button>
   <div class="label" style="text-align:center;margin:-4px 0 12px">案件・レシート・サマリーを自動で見分けます（20枚までまとめて可）</div>
@@ -777,7 +777,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     </div>
   </div>
   <div class="card"><h2>公式サマリー（スクショ記録）</h2><div id="anSum"></div></div>
-  <div class="card"><h2>受けた案件と見送った案件</h2><div id="anOffer"></div></div>
+  <div class="card"><h2>受けた案件と見送り案件</h2><div id="anOffer"></div></div>
   <div class="card"><h2>捨てた時間（ロス）</h2><div id="anLoss"></div></div>
   <div class="card"><h2>想定と実測のズレ</h2><div id="anGap"></div></div>
   <div class="card"><h2>今週と先週</h2><div id="anWeek"></div></div>
@@ -1131,7 +1131,7 @@ const K_AI    = "delivery-ledger.ai-notes.v1";
 const K_STATE = "delivery-ledger.working.v1";   // 入力途中・計測中の内容
 const K_SUM   = "delivery-ledger.summaries.v1"; // 公式アプリの日次サマリー
 const K_LOSS  = "delivery-ledger.losses.v1";    // キャンセル等で捨てた時間
-const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送った案件の記録
+const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送り案件の記録
 const K_GEO   = "delivery-ledger.storegeo.v1";  // 店の位置（店に到着したときに覚える）
 const K_USAGE = "delivery-ledger.usage.v1";     // 今日のAI利用回数
 const K_NOTE  = "delivery-ledger.storenote.v1"; // 店舗メモ（文章とタグ。画像はIndexedDB）
@@ -1797,7 +1797,7 @@ function bindNoteBtn(name){
    保存した時点で入力が完了する。想定値も一緒に持たせて、
    あとで実測と突き合わせる。 */
 /* 案件を記録する。
-   受けた案件だけでなく、見送った案件も残しておくと
+   受けた案件だけでなく、見送り案件も残しておくと
    「どんな案件が流れてきているか」「見送りラインが妥当か」が後から分かる。 */
 function logOffer(taken){
   const fee = n($("sFee").value);
@@ -1836,11 +1836,11 @@ $("toSkip").onclick = ()=>{
   calcScan(); saveState();
 };
 
-/* 受けた案件と見送った案件の比較 */
+/* 受けた案件と見送り案件の比較 */
 function renderOffers(){
   const el = $("anOffer");
   if(!offers.length){
-    el.innerHTML = `<div class="empty">判定画面で「計測を開始」か「見送った」を押すと、<br>流れてくる案件の傾向がここに貯まります</div>`;
+    el.innerHTML = `<div class="empty">判定画面で「計測を開始」か「見送り」を押すと、<br>流れてくる案件の傾向がここに貯まります</div>`;
     return;
   }
   const took = offers.filter(o=>o.taken), skip = offers.filter(o=>!o.taken);
@@ -1869,10 +1869,10 @@ function renderOffers(){
 
   el.innerHTML = `<table><tr><th></th><th>件</th><th>平均報酬</th><th>円/km</th><th>円/時</th></tr>
       ${row("受けた", took)}
-      ${row("見送った", skip)}
+      ${row("見送り", skip)}
     </table>
     ${(took.length>=cfg.minSamples && skip.length>=cfg.minSamples)?`<div class="note info">
-      見送った案件の平均は<b>${Math.round(avg(skip,o=>o.perKm))}円/km</b>、受けた案件は<b>${Math.round(avg(took,o=>o.perKm))}円/km</b>。
+      見送り案件の平均は<b>${Math.round(avg(skip,o=>o.perKm))}円/km</b>、受けた案件は<b>${Math.round(avg(took,o=>o.perKm))}円/km</b>。
       ${avg(skip,o=>o.perKm) >= avg(took,o=>o.perKm)*0.95 ? "差が小さいので、見送りラインが厳しすぎるかもしれません。" : "しっかり選べています。"}
     </div>`:""}
     <table style="margin-top:12px"><tr><th>時間帯</th><th>件</th><th>受けた率</th><th>平均円/km</th></tr>
@@ -1888,7 +1888,7 @@ function renderOffers(){
     <button class="btn ghost sm" id="offClear" style="margin-top:12px">案件の記録を全部消す</button>`;
 
   $("offClear").onclick = ()=>{
-    if(!confirm("受けた／見送った案件の記録をすべて削除しますか？")) return;
+    if(!confirm("受けた／見送り案件の記録をすべて削除しますか？")) return;
     offers = []; saveOffer(); renderOffers(); toast("削除しました");
   };
 }
@@ -4280,7 +4280,7 @@ function growDetail(kind){
     el.innerHTML = `<table style="margin-top:12px">
         <tr><th></th><th>件</th><th>平均報酬</th><th>円/km</th></tr>
         <tr><td>受けた</td><td class="num">${took.length}</td><td class="num green">${avg(took,o=>o.feeYen)}</td><td class="num">${avg(took,o=>o.perKm)}</td></tr>
-        <tr><td>見送った</td><td class="num">${skip.length}</td><td class="num">${avg(skip,o=>o.feeYen)}</td><td class="num">${avg(skip,o=>o.perKm)}</td></tr>
+        <tr><td>見送り</td><td class="num">${skip.length}</td><td class="num">${avg(skip,o=>o.feeYen)}</td><td class="num">${avg(skip,o=>o.perKm)}</td></tr>
       </table>` + T(["直近の案件","報酬","円/km",""], recent);
     return;
   }
