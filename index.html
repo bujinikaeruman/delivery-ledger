@@ -297,6 +297,30 @@ body.big .note{font-size:15px}
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
 #quick{position:fixed}
 
+/* 育ち具合 */
+#grow{
+  position:fixed;inset:0;z-index:91;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#grow.on{display:flex}
+#grTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+#grTop h2{margin:0;font-size:18px;font-weight:800}
+#grTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.lvBox{text-align:center;padding:6px 0 2px}
+.lvNo{font-size:56px;font-weight:800;line-height:1;color:var(--amber);font-variant-numeric:tabular-nums}
+.lvNm{font-size:19px;font-weight:800;margin-top:4px}
+.lvBar{height:12px;background:rgba(255,255,255,.09);border-radius:7px;overflow:hidden;margin:14px 0 6px}
+.lvBar i{display:block;height:100%;background:var(--amber);border-radius:7px;transition:width .4s}
+body.day .lvBar{background:rgba(0,0,0,.1)}
+.unl{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.unl:last-child{border-bottom:none}
+.unl .mk{font-size:16px;line-height:1.4}
+.unl .bd{flex:1}
+.unl .bd b{display:block}
+.unl .bd span{font-size:12px;color:var(--muted)}
+.unl.off .bd b{color:var(--muted)}
+body.day .unl{border-bottom-color:rgba(0,0,0,.1)}
+
 /* APIキーの取り方 */
 #keyGuide{
   position:fixed;inset:0;z-index:92;background:var(--navy);display:none;flex-direction:column;
@@ -468,6 +492,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <button class="btn ghost" id="goQuick" style="margin-bottom:10px">ワンタップ記録をはじめる</button>
   <button class="btn ghost" id="goCash" style="margin-bottom:10px">💴 お釣り計算</button>
   <button class="btn ghost" id="goClose" style="margin-bottom:10px">🏁 今日の締め</button>
+  <button class="btn ghost" id="goGrow" style="margin-bottom:10px">🌱 アプリの育ち具合</button>
   <button class="btn ghost" id="goScan" style="margin-bottom:10px">案件を手入力で判定</button>
   <button class="btn ghost" id="goAdd" style="margin-bottom:10px">配達を手入力する</button>
   <button class="btn ghost" id="goAi" style="margin-bottom:12px">お知らせを要約する</button>
@@ -900,6 +925,16 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="shotBody"></div>
   <button class="btn ghost" id="shotNext" style="margin-top:4px">📸 次のスクショを読む</button>
   <div id="shotLog" class="label" style="text-align:center;margin-top:10px"></div>
+  <div style="height:20px"></div>
+</div>
+
+<!-- 育ち具合 -->
+<div id="grow">
+  <div id="grTop">
+    <h2>🌱 アプリの育ち具合</h2>
+    <button id="grX">閉じる</button>
+  </div>
+  <div id="grBody"></div>
   <div style="height:20px"></div>
 </div>
 
@@ -4004,6 +4039,135 @@ $("aiTest").onclick = async ()=>{
     sndBad();
   }
 };
+
+/* =========================================================
+   アプリの育ち具合
+   どのサービスで走っていても、店に行って受け取って届けるのは同じ。
+   記録が貯まるほど判定の材料が増えるので、その進み具合を見える形にする。
+   ========================================================= */
+const LEVELS = [
+  {p:0,    name:"見習い"},
+  {p:30,   name:"駆け出し"},
+  {p:80,   name:"常連"},
+  {p:180,  name:"熟練"},
+  {p:350,  name:"地元マスター"},
+  {p:700,  name:"エリア支配人"},
+  {p:1500, name:"伝説の配達員"}
+];
+function growStats(){
+  const done = live();
+  const uniq = (arr, f) => new Set(arr.map(f).filter(Boolean)).size;
+  const stores = uniq(done, e=> normStore(e.storeName));
+  const areas  = uniq(done, e=> normArea(e.dropArea));
+  const builds = uniq(done, e=> normBuild(e.dropBuilding));
+  const geo    = Object.keys(storeGeo).length;
+  const days   = uniq(done, e=> dayKey(e.completedAt));
+  const fee    = done.reduce((a,e)=>a+n(e.feeYen),0);
+  const planned= done.filter(e=> e.planned).length;
+
+  // 判定に使える水準まで貯まった店・エリア・建物の数
+  const cnt = (arr, f) => {
+    const m = {};
+    arr.forEach(e=>{ const k=f(e); if(k) m[k]=(m[k]||0)+1; });
+    return Object.values(m).filter(v=> v>=cfg.minSamples).length;
+  };
+  const readyStores = cnt(done, e=> normStore(e.storeName));
+  const readyAreas  = cnt(done, e=> normArea(e.dropArea));
+  const readyBuilds = cnt(done, e=> normBuild(e.dropBuilding));
+
+  const pts = Math.round(done.length*1 + stores*2 + areas*2 + builds*2 + geo*3 + offers.length*0.5 + summaries.length*2);
+  let li = 0;
+  for(let i=0;i<LEVELS.length;i++) if(pts>=LEVELS[i].p) li=i;
+  const next = LEVELS[li+1] || null;
+  const prevP = LEVELS[li].p;
+  const ratio = next ? Math.min(100, (pts-prevP)/(next.p-prevP)*100) : 100;
+
+  return {n:done.length, stores, areas, builds, geo, days, fee, planned, offers:offers.length,
+    skipped: offers.filter(o=>!o.taken).length, sums:summaries.length,
+    readyStores, readyAreas, readyBuilds,
+    pts, level:li+1, name:LEVELS[li].name, next, ratio, toNext: next ? next.p-pts : 0};
+}
+function renderGrow(){
+  const g = growStats();
+  const sp = ridingSpeed();
+  const row = (on, title, sub) =>
+    `<div class="unl ${on?"":"off"}"><div class="mk">${on?"✅":"⬜"}</div>
+     <div class="bd"><b>${title}</b><span>${sub}</span></div></div>`;
+
+  $("grBody").innerHTML = `
+  <div class="card">
+    <div class="lvBox">
+      <div class="label">レベル</div>
+      <div class="lvNo num">${g.level}</div>
+      <div class="lvNm">${g.name}</div>
+    </div>
+    <div class="lvBar"><i style="width:${g.ratio}%"></i></div>
+    <div class="label" style="text-align:center">
+      ${g.next ? `次は「${g.next.name}」まであと ${g.toNext} ポイント` : "最高レベルに到達しています"}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>覚えたこと</h2>
+    <div class="grid3">
+      <div class="stat"><div class="v num">${g.stores}</div><div class="u">店舗</div></div>
+      <div class="stat"><div class="v num">${g.areas}</div><div class="u">エリア</div></div>
+      <div class="stat"><div class="v num">${g.builds}</div><div class="u">建物</div></div>
+    </div>
+    <div class="grid3" style="margin-top:10px">
+      <div class="stat"><div class="v num">${g.n}</div><div class="u">配達記録</div></div>
+      <div class="stat"><div class="v num">${g.offers}</div><div class="u">案件記録</div></div>
+      <div class="stat"><div class="v num">${g.geo}</div><div class="u">位置つき店</div></div>
+    </div>
+    <div class="grid3" style="margin-top:10px">
+      <div class="stat"><div class="v num green">${yen(g.fee)}</div><div class="u">総報酬</div></div>
+      <div class="stat"><div class="v num">${g.days}</div><div class="u">稼働日</div></div>
+      <div class="stat"><div class="v num">${g.pts}</div><div class="u">ポイント</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>できるようになったこと</h2>
+    ${row(g.readyStores>0, `店ごとの店待ち予測（${g.readyStores}軒）`,
+      g.readyStores>0?"判定のとき、その店の平均待ち時間が出ます":`同じ店で${cfg.minSamples}件記録すると使えます`)}
+    ${row(g.readyAreas>0, `エリアの鳴りやすさ（${g.readyAreas}地区）`,
+      g.readyAreas>0?"配達後に次が入るまでの平均が出ます":`同じエリアで${cfg.minSamples}件記録すると使えます`)}
+    ${row(g.readyBuilds>0, `建物ごとの受渡時間（${g.readyBuilds}件）`,
+      g.readyBuilds>0?"タワマンや団地の所要が事前に分かります":`同じ建物で${cfg.minSamples}件記録すると使えます`)}
+    ${row(sp.auto, `自分の平均速度（${r1(sp.v)}km/時）`,
+      sp.auto?`実績${sp.n}件から自動で算出中`:`実績が5件たまると実測に切り替わります（現在${sp.n}件）`)}
+    ${row(g.geo>0, `現在地から店までの距離（${g.geo}軒）`,
+      g.geo>0?"位置を覚えた店なら距離を見積もれます":"設定で位置情報をオンにすると覚えます")}
+    ${row(g.planned>0, `見込みの答え合わせ（${g.planned}件）`,
+      g.planned>0?"判定の甘さが数字で分かります":"判定画面から計測を始めると貯まります")}
+    ${row(g.sums>0, `待機込みの本当の時給（${g.sums}日）`,
+      g.sums>0?"公式サマリーと突き合わせできています":"日次サマリーのスクショを読ませると出ます")}
+  </div>
+
+  <button class="btn primary" id="grShare">この育ち具合を仲間に見せる</button>`;
+
+  $("grShare").onclick = async ()=>{
+    const text =
+`フーデリ採算くん 育ち具合
+レベル${g.level}「${g.name}」（${g.pts}pt）
+
+配達 ${g.n}件 ／ 総報酬 ${yen(g.fee)}
+稼働 ${g.days}日
+覚えた店 ${g.stores}軒（位置つき${g.geo}軒）
+エリア ${g.areas}地区 ／ 建物 ${g.builds}件
+案件記録 ${g.offers}件（見送り${g.skipped}件）
+
+${APP_URL}`;
+    if(navigator.share){
+      try{ await navigator.share({title:"フーデリ採算くん 育ち具合", text}); return; }
+      catch(e){ if(e && e.name==="AbortError") return; }
+    }
+    try{ await navigator.clipboard.writeText(text); toast("コピーしました"); }
+    catch(e){ prompt("この文をコピーして送ってください", text); }
+  };
+}
+$("goGrow").onclick = ()=>{ $("grow").classList.add("on"); renderGrow(); };
+$("grX").onclick   = ()=> $("grow").classList.remove("on");
 
 /* APIキーの取り方の案内。
    外部サイトの説明を読ませずに、この画面の指示だけで終わるようにする。 */
