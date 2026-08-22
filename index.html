@@ -518,7 +518,10 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <label class="f"><span>配送時間（分）</span><input id="sDur" type="number" inputmode="numeric" placeholder="15"></label>
       <label class="f"><span>戻り時間（分）</span><input id="sRetMin" type="number" inputmode="numeric" placeholder="8"></label>
     </div>
-    <label class="f"><span>店待ち想定（分）</span><input id="sWait" type="number" inputmode="numeric" placeholder="5"></label>
+    <div class="row">
+      <label class="f"><span>店待ち想定（分）</span><input id="sWait" type="number" inputmode="numeric" placeholder="5"></label>
+      <label class="f"><span>配達件数（相乗せ）</span><input id="sDropCount" type="number" inputmode="numeric" placeholder="1"></label>
+    </div>
     <div class="note info" style="margin-top:0">戻り距離を足すなら戻り時間も足す。片道だけで時給を出すと必ず高く出ます。</div>
   </div>
 
@@ -528,6 +531,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   </div>
 
   <button class="btn primary" id="toQuick" style="margin-bottom:10px">この案件で計測を開始</button>
+  <button class="btn ghost" id="toSkip" style="margin-bottom:10px">見送った（記録だけ残す）</button>
   <button class="btn ghost" id="toAdd">手入力の記録画面へ</button>
   <div style="height:12px"></div>
 </section>
@@ -688,6 +692,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     </div>
   </div>
   <div class="card"><h2>公式サマリー（スクショ記録）</h2><div id="anSum"></div></div>
+  <div class="card"><h2>受けた案件と見送った案件</h2><div id="anOffer"></div></div>
   <div class="card"><h2>捨てた時間（ロス）</h2><div id="anLoss"></div></div>
   <div class="card"><h2>想定と実測のズレ</h2><div id="anGap"></div></div>
   <div class="card"><h2>今週と先週</h2><div id="anWeek"></div></div>
@@ -938,6 +943,7 @@ const K_AI    = "delivery-ledger.ai-notes.v1";
 const K_STATE = "delivery-ledger.working.v1";   // 入力途中・計測中の内容
 const K_SUM   = "delivery-ledger.summaries.v1"; // 公式アプリの日次サマリー
 const K_LOSS  = "delivery-ledger.losses.v1";    // キャンセル等で捨てた時間
+const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送った案件の記録
 
 const SVC_NAME = {"uber-eats":"Uber Eats","demae-can":"出前館","rocket-now":"Rocket Now","other":"その他","all":"すべて"};
 const BLD_NAME = {house:"戸建て",apartment:"アパート",mansion:"マンション","housing-complex":"団地","tower-mansion":"タワマン","office-commercial":"オフィス・商業",other:"その他"};
@@ -950,7 +956,7 @@ const CFG_DEF = {
   dayMode:false, bigMode:false, sound:true, chime:true, closedOn:"", aiKey:"", aiModel:"gemini-3.5-flash", speedKmh:20
 };
 
-let entries = [], quests = [], expenses = [], aiNotes = [], summaries = [], losses = [], cfg = {...CFG_DEF};
+let entries = [], quests = [], expenses = [], aiNotes = [], summaries = [], losses = [], offers = [], cfg = {...CFG_DEF};
 
 /* ---------- 保存・読み込み ---------- */
 function readArr(key){ try{ const v = JSON.parse(localStorage.getItem(key)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
@@ -961,6 +967,7 @@ function load(){
   aiNotes = readArr(K_AI);
   summaries = readArr(K_SUM);
   losses = readArr(K_LOSS);
+  offers = readArr(K_OFFER);
   try{ cfg = {...CFG_DEF, ...(JSON.parse(localStorage.getItem(K_CFG)||"{}"))}; }catch(e){ cfg = {...CFG_DEF}; }
 }
 // ワンタップ記録で作った「金額未入力」のレコードは、埋まるまで平均や報酬の集計に入れない
@@ -972,6 +979,7 @@ const saveCfg     = ()=> localStorage.setItem(K_CFG,   JSON.stringify(cfg));
 const saveAi      = ()=> localStorage.setItem(K_AI,    JSON.stringify(aiNotes.slice(0,30)));
 const saveSum     = ()=> localStorage.setItem(K_SUM,   JSON.stringify(summaries));
 const saveLoss    = ()=> localStorage.setItem(K_LOSS,  JSON.stringify(losses));
+const saveOffer   = ()=> localStorage.setItem(K_OFFER, JSON.stringify(offers.slice(-3000)));
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
@@ -1108,7 +1116,7 @@ function saveState(){
       scan: {
         svc:$("sSvc").value, store:$("sStore").value, area:$("sArea").value, bldName:$("sBldName").value, fee:$("sFee").value,
         dist:$("sDist").value, ret:$("sRet").value, dur:$("sDur").value,
-        retMin:$("sRetMin").value, wait:$("sWait").value
+        retMin:$("sRetMin").value, wait:$("sWait").value, dc:$("sDropCount").value
       },
       cash: {amt:$("cashAmt").value, got:$("cashGot").value}
     }));
@@ -1137,7 +1145,7 @@ function restoreState(){
     const c = s.scan;
     $("sSvc").value=c.svc||"uber-eats"; $("sStore").value=c.store||""; $("sArea").value=c.area||""; $("sBldName").value=c.bldName||""; $("sFee").value=c.fee||"";
     $("sDist").value=c.dist||""; $("sRet").value=c.ret||""; $("sDur").value=c.dur||"";
-    $("sRetMin").value=c.retMin||""; $("sWait").value=c.wait||"";
+    $("sRetMin").value=c.retMin||""; $("sWait").value=c.wait||""; $("sDropCount").value=c.dc||"";
   }
   if(s.cash){ $("cashAmt").value=s.cash.amt||""; $("cashGot").value=s.cash.got||""; }
   // 計測が途中なら、そのまま計測画面に戻す
@@ -1364,7 +1372,7 @@ function refreshStoreList(){
 /* =========================================================
    案件チェック
    ========================================================= */
-["sFee","sDist","sRet","sDur","sRetMin","sWait","sStore","sArea","sBldName","sSvc"].forEach(id=> $(id).addEventListener("input", ()=>{ calcScan(); saveState(); }));
+["sFee","sDist","sRet","sDur","sRetMin","sWait","sDropCount","sStore","sArea","sBldName","sSvc"].forEach(id=> $(id).addEventListener("input", ()=>{ calcScan(); saveState(); }));
 
 function calcScan(){
   const fee = n($("sFee").value);
@@ -1393,7 +1401,9 @@ function calcScan(){
   sig.dataset.kind = j.k;
   $("sigGo").textContent = j.k==="no" ? "受けるならタップ →" : "タップで計測を開始 →";
   $("sigV").textContent = j.t;
+  const dc = Math.max(1, n($("sDropCount").value)||1);
   $("sigW").textContent = `${Math.round(hr).toLocaleString()}円/時 ・ ${Math.round(pk)}円/km ・ 拘束${Math.round(min)}分 ・ ${r1(km)}km`
+    + (dc>1 ? ` ・ ${dc}件で1件${yen(fee/dc)}` : "")
     + (bn.sum>0 ? `（実効${Math.round(feeEff).toLocaleString()}円）` : "");
 
   setGauge("gHr",hr,cfg.hrGo,"円/時"); setGauge("gKm",pk,cfg.kmGo,"円/km");
@@ -1520,9 +1530,106 @@ function renderStoreInsight(){
    店名・報酬・距離・エリア・建物が最初から入るので、
    保存した時点で入力が完了する。想定値も一緒に持たせて、
    あとで実測と突き合わせる。 */
+/* 案件を記録する。
+   受けた案件だけでなく、見送った案件も残しておくと
+   「どんな案件が流れてきているか」「見送りラインが妥当か」が後から分かる。 */
+function logOffer(taken){
+  const fee = n($("sFee").value);
+  const km  = n($("sDist").value) + n($("sRet").value);
+  const min = n($("sDur").value) + n($("sRetMin").value) + n($("sWait").value);
+  if(fee<=0) return null;
+  const bn = activeBonus($("sSvc").value);
+  const feeEff = fee + bn.sum;
+  const j = judge(min>0?feeEff/min*60:0, km>0?feeEff/km:0);
+  const o = {
+    id:"o"+Date.now()+Math.random().toString(36).slice(2,5),
+    at: new Date().toISOString(),
+    service: $("sSvc").value,
+    storeName: $("sStore").value.trim(),
+    dropArea: cleanArea($("sArea").value),
+    dropBuilding: cleanBuilding($("sBldName").value),
+    feeYen: fee, km, minutes: min,
+    dropCount: Math.max(1, n($("sDropCount").value)||1),
+    hourly: min>0 ? fee/min*60 : 0,
+    perKm: km>0 ? fee/km : 0,
+    verdict: j.k,
+    taken: !!taken
+  };
+  offers.push(o); saveOffer();
+  return o;
+}
+
+$("toSkip").onclick = ()=>{
+  const o = logOffer(false);
+  if(!o){ toast("報酬を入れてください"); return; }
+  sndEnd(); vibe(30);
+  toast(`見送りとして記録しました（${Math.round(o.perKm)}円/km）`);
+  ["sFee","sDist","sRet","sDur","sRetMin","sWait","sStore","sArea","sBldName"].forEach(id=> $(id).value="");
+  if($("sDropCount")) $("sDropCount").value = "";
+  $("ofOut").innerHTML = ""; calcScan(); saveState();
+};
+
+/* 受けた案件と見送った案件の比較 */
+function renderOffers(){
+  const el = $("anOffer");
+  if(!offers.length){
+    el.innerHTML = `<div class="empty">判定画面で「計測を開始」か「見送った」を押すと、<br>流れてくる案件の傾向がここに貯まります</div>`;
+    return;
+  }
+  const took = offers.filter(o=>o.taken), skip = offers.filter(o=>!o.taken);
+  const avg = (a,f)=> a.length ? a.reduce((x,y)=>x+f(y),0)/a.length : null;
+  const row = (nm,a)=> a.length
+    ? `<tr><td>${nm}</td><td class="num">${a.length}</td><td class="num green">${yen(avg(a,o=>o.feeYen))}</td><td class="num">${Math.round(avg(a,o=>o.perKm))}</td><td class="num">${Math.round(avg(a,o=>o.hourly)).toLocaleString()}</td></tr>`
+    : `<tr><td>${nm}</td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
+
+  // 時間帯別に「どれくらい見送っているか」
+  const bySlot = {};
+  offers.forEach(o=>{
+    const k = slotOf(new Date(o.at).getHours());
+    (bySlot[k] ||= {n:0, t:0, km:[]});
+    bySlot[k].n++; if(o.taken) bySlot[k].t++; bySlot[k].km.push(o.perKm);
+  });
+
+  // よく見送っている店
+  const byStore = {};
+  skip.filter(o=>o.storeName).forEach(o=>{
+    const k = normStore(o.storeName);
+    (byStore[k] ||= {name:o.storeName, n:0, km:[]});
+    byStore[k].n++; byStore[k].km.push(o.perKm);
+  });
+  const stores = Object.values(byStore).filter(x=>x.n>=cfg.minSamples)
+    .sort((a,b)=>b.n-a.n).slice(0,6);
+
+  el.innerHTML = `<table><tr><th></th><th>件</th><th>平均報酬</th><th>円/km</th><th>円/時</th></tr>
+      ${row("受けた", took)}
+      ${row("見送った", skip)}
+    </table>
+    ${(took.length>=cfg.minSamples && skip.length>=cfg.minSamples)?`<div class="note info">
+      見送った案件の平均は<b>${Math.round(avg(skip,o=>o.perKm))}円/km</b>、受けた案件は<b>${Math.round(avg(took,o=>o.perKm))}円/km</b>。
+      ${avg(skip,o=>o.perKm) >= avg(took,o=>o.perKm)*0.95 ? "差が小さいので、見送りラインが厳しすぎるかもしれません。" : "しっかり選べています。"}
+    </div>`:""}
+    <table style="margin-top:12px"><tr><th>時間帯</th><th>件</th><th>受けた率</th><th>平均円/km</th></tr>
+      ${SLOTS.filter(k=>bySlot[k]).map(k=>{
+        const b = bySlot[k], rate = Math.round(b.t/b.n*100);
+        return `<tr><td>${k}</td><td class="num">${b.n}</td><td class="num ${rate<30?"red":""}">${rate}%</td><td class="num">${Math.round(b.km.reduce((x,y)=>x+y,0)/b.km.length)}</td></tr>`;
+      }).join("")}
+    </table>
+    <div class="label" style="margin-top:6px">受けた率が低い時間帯は、そもそも良い案件が流れてきていない時間帯です</div>
+    ${stores.length?`<table style="margin-top:12px"><tr><th>よく見送る店</th><th>回</th><th>平均円/km</th></tr>` +
+      stores.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num">${Math.round(x.km.reduce((a,b)=>a+b,0)/x.km.length)}</td></tr>`).join("") +
+      `</table>`:""}
+    <button class="btn ghost sm" id="offClear" style="margin-top:12px">案件の記録を全部消す</button>`;
+
+  $("offClear").onclick = ()=>{
+    if(!confirm("受けた／見送った案件の記録をすべて削除しますか？")) return;
+    offers = []; saveOffer(); renderOffers(); toast("削除しました");
+  };
+}
+
 function startFromScan(fromSignal){
   const fee = n($("sFee").value);
   if(fee<=0){ toast("報酬を入れてください"); return; }
+  logOffer(true);          // 受けた案件として残す
   // 見送る判定のときだけ、受けるつもりか確認する
   if(fromSignal && $("sig").dataset.kind === "no"){
     if(!confirm("「見送る」判定の案件です。この案件を受けて計測を始めますか？")) return;
@@ -2361,6 +2468,7 @@ function renderAnalytics(){
   $("anKmY").textContent = a.km>0?Math.round(a.kmY):"—";
   $("anSc").textContent  = a.n?Math.round(a.score):"—";
   renderSummaries();
+  renderOffers();
   renderLoss();
   renderGap();
   renderWeek();
@@ -2772,7 +2880,8 @@ async function aiReadOffer(file){
 {"store":"店舗名（不明なら空文字）","dropArea":"配達先のエリア名。市区町村・町名まで（不明なら空文字）","dropBuilding":"配達先の建物名。棟番号まで（不明なら空文字）","fee":報酬の合計金額を数値のみ（不明なら0）,"km":案件の距離を数値のみ・単位なし（不明なら0）,"service":"uber-eats"|"demae-can"|"rocket-now"|"other","conf":0〜100の読み取り自信度,"note":"読めなかった項目があれば短く"}
 
 ・報酬は「¥」やカンマを外した数値だけ。基本料と各種インセンティブが分かれて書かれている場合は合計。
-・距離が「店まで」と「店から先」に分かれている場合は合計。
+・距離が「店まで」と「店から先」に分かれている場合は合計。地図に合計距離と合計時間が出ていればそれを使ってください。
+・offerの画面で「配達(2)」のように複数件がまとまっている場合は dropCount にその件数を入れてください。
 ・確信が持てない値は0にして、confを下げてください。
 ・note は30文字以内。改行は使わず、1行で書いてください。商品の明細は出力しないでください。
 ・dropArea は市区町村・町名まで、dropBuilding は建物名と棟番号までにしてください。
@@ -2829,6 +2938,7 @@ $("ofFile").onchange = async ev=>{
     $("sArea").value  = cleanArea(r.dropArea||"");
     $("sBldName").value = cleanBuilding(r.dropBuilding||"");
     $("sFee").value   = n(r.fee) || "";
+    if(n(r.dropCount)>1) $("sDropCount").value = n(r.dropCount);
     $("sDist").value  = n(r.km)  || "";
 
     // スクショに写っていない項目を実績から補完
@@ -2929,6 +3039,7 @@ ${multi ? `画像が${imgs.length}枚あります。アプリの画面なら、�
 "fee":報酬を数値のみ,
 "km":距離を数値のみ,
 "minutes":所要時間を分の数値のみ,
+"dropCount":この案件に含まれる配達件数。「配達(2)」やシングル表記から判断。分からなければ1,
 "period":"earningsの対象期間の文字列",
 "date":"earningsの対象日 YYYY-MM-DD。今日なら今日の日付",
 "count":件数の数値,
@@ -3038,6 +3149,7 @@ function renderShot(r){
       $("sStore").value = r.store||""; $("sArea").value = cleanArea(r.dropArea||"");
       $("sBldName").value = cleanBuilding(r.dropBuilding||"");
       $("sFee").value = fee||""; $("sDist").value = km||"";
+      if(n(r.dropCount)>1) $("sDropCount").value = n(r.dropCount);
       fillScanGaps(r.store||"", km);
       $("shot").classList.remove("on"); show("scan"); saveState();
     };
@@ -3550,7 +3662,7 @@ function download(name,text,type){
 }
 $("expJson").onclick = ()=>{
   download("delivery-ledger-"+dayKey(new Date())+".json",
-    JSON.stringify({version:4, cfg:{...cfg, aiKey:""}, entries, quests, expenses, summaries, losses}, null, 2), "application/json");
+    JSON.stringify({version:4, cfg:{...cfg, aiKey:""}, entries, quests, expenses, summaries, losses, offers}, null, 2), "application/json");
   toast("書き出しました");
 };
 $("expCsv").onclick = ()=>{
@@ -3583,8 +3695,9 @@ $("impFile").onchange = ev=>{
       const c = merge(expenses, d.expenses);
       const su = merge(summaries, d.summaries);
       const lo = merge(losses, d.losses);
-      saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss();
-      toast(`配達${a}／クエスト${b}／支出${c}／サマリー${su}／ロス${lo} を追加`);
+      const of = merge(offers, d.offers);
+      saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss(); saveOffer();
+      toast(`配達${a}／クエスト${b}／支出${c}／サマリー${su}／ロス${lo}／案件${of} を追加`);
       renderSettings();
     }catch(e){ toast("読み込めませんでした"); }
     ev.target.value="";
@@ -3594,10 +3707,10 @@ $("impFile").onchange = ev=>{
 $("wipe").onclick = ()=>{
   if(!confirm("配達・クエスト・支出をすべて削除します。元に戻せません。")) return;
   if(!confirm("本当に削除しますか？")) return;
-  entries=[]; quests=[]; expenses=[]; summaries=[]; losses=[];
+  entries=[]; quests=[]; expenses=[]; summaries=[]; losses=[]; offers=[];
   qk = {legs:[], cur:null, saved:0};
   localStorage.removeItem(K_STATE);
-  saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss(); renderSettings(); toast("削除しました");
+  saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss(); saveOffer(); renderSettings(); toast("削除しました");
 };
 
 /* =========================================================
