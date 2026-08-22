@@ -1756,7 +1756,10 @@ function renderStoreInsight(){
   const bld = $("sBldName").value.trim();
   const areaHtml = (area ? areaInsightHtml(area) + areaFlowHtml(area) : "") + (bld ? buildInsightHtml(bld) : "");
   const noteHtml = name ? noteChipsHtml(name) : "";
-  const noteBtn = name ? `<button class="btn ghost sm" id="siNote" style="margin-top:10px">📝 この店のメモを見る・書く</button>` : "";
+  const noteBtn = name
+    ? `<button class="btn ghost sm" id="siNote" style="margin-top:10px">📝 この店のメモを見る・書く</button>` +
+      `<button class="btn ghost sm" id="siNav" style="margin-top:8px">🧭 この店までナビ${storeGeo[normStore(name)]?"":"（店名で検索）"}</button>`
+    : "";
   if(!name){ el.innerHTML = (areaHtml || `<div class="empty">店舗名・エリア・建物名のどれかを入れると過去の実績を照合します</div>`); return; }
   const st = storeStats(name);
   if(!st){ el.innerHTML = `<div class="note info">この店舗の記録はまだありません。あと${need}件たまると平均が出ます。</div>` + noteHtml + areaHtml + noteBtn; bindNoteBtn(name); return; }
@@ -1790,6 +1793,8 @@ function renderStoreInsight(){
 function bindNoteBtn(name){
   const b = $("siNote");
   if(b) b.onclick = ()=> openNote(name);
+  const v = $("siNav");
+  if(v) v.onclick = ()=> openNav(navTargetForStore(name, $("sArea").value.trim()));
 }
 
 /* 判定した案件をそのまま計測へ渡す。
@@ -1968,12 +1973,29 @@ function areaFlowHtml(name){
     ${good?"<br>鳴りやすいエリアです。" : "<br>間が空きがちなエリアです。単価が見合うか確認してください。"}</div>`;
 }
 
-/* 覚えている店へナビを開く（端末の地図アプリが起動する） */
-function openNav(g){
-  if(!g || !isFinite(g.lat) || !isFinite(g.lng)){ toast("位置を覚えていません"); return; }
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}&travelmode=driving`;
-  window.open(url, "_blank", "noopener");
+/* ナビを開く。
+   位置を覚えている店は座標で、覚えていない店は店名や住所の文字列で開く。
+   走ったことがない見送り案件でも、店名さえ読めていれば飛べる。 */
+function openNav(target){
+  let dest = "";
+  if(target && isFinite(target.lat) && isFinite(target.lng)){
+    dest = `${target.lat},${target.lng}`;                 // 座標があればそちらが正確
+  }else{
+    const q = (typeof target === "string") ? target : (target && (target.q || target.name)) || "";
+    if(!q.trim()){ toast("行き先が分かりません"); return; }
+    dest = encodeURIComponent(q.trim());
+  }
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`,
+    "_blank", "noopener");
 }
+/* 店名からナビ先を決める。覚えた位置があれば優先し、無ければ店名＋エリアで検索させる */
+function navTargetForStore(name, area){
+  const g = storeGeo[normStore(name)];
+  if(g) return g;
+  const q = [name, area].filter(Boolean).join(" ");
+  return q ? {q} : null;
+}
+function navBtnHtml(id, label){ return `<button class="btn ghost sm" id="${id}" style="margin-top:8px">🧭 ${label}</button>`; }
 // 覚えている店の一覧（設定画面）
 // 設定に出す店舗メモの一覧
 async function renderNoteList(){
@@ -2825,9 +2847,13 @@ function openDetail(id){
     ${bt&&bt.count>=cfg.minSamples&&bt.handoffN>=cfg.minSamples?`<div class="brk"><span class="k">この建物の受渡</span><span class="v">平均${r1(bt.handoff)}分（${bt.count}件）</span></div>`:""}
   </div>`:""}
 
+  ${e.storeName?`<button class="btn ghost" id="dtNavStore" style="margin-bottom:10px">🧭 この店までナビ</button>`:""}
+  ${(e.dropBuilding||e.dropArea)?`<button class="btn ghost" id="dtNavDrop" style="margin-bottom:10px">🧭 配達先の周辺までナビ</button>`:""}
   <button class="btn primary" id="dtEdit" style="margin-bottom:10px">この記録を修正する</button>
   <button class="btn danger" id="dtDel">この記録を削除する</button>`;
 
+  if($("dtNavStore")) $("dtNavStore").onclick = ()=> openNav(navTargetForStore(e.storeName, e.dropArea));
+  if($("dtNavDrop"))  $("dtNavDrop").onclick  = ()=> openNav({q:[e.dropBuilding, e.dropArea].filter(Boolean).join(" ")});
   $("dtEdit").onclick = ()=>{
     $("detail").classList.remove("on");
     loadEntryToForm(e); show("add");
@@ -3661,10 +3687,15 @@ function renderShot(r){
             <button class="btn ghost sm" data-judge="${i}">判定画面へ</button>
             <button class="btn skip sm" data-skip="${i}">見送りで記録</button>
           </div>
+          <button class="btn ghost sm" data-onav="${i}" style="margin-top:8px">🧭 この店までナビ</button>
         </div>`;
       }).join("") +
       (list.length>1 ? `<button class="btn skip" id="shSkipAll">${list.length}件すべて見送りとして記録</button>` : "");
 
+    box.querySelectorAll("[data-onav]").forEach(b=> b.onclick = ()=>{
+      const o = list[+b.dataset.onav];
+      openNav(navTargetForStore(o.store||"", cleanArea(o.dropArea||"")));
+    });
     box.querySelectorAll("[data-judge]").forEach(b=> b.onclick = ()=>{
       toForm(list[+b.dataset.judge]);
       $("shot").classList.remove("on"); show("scan");
@@ -4225,9 +4256,11 @@ function growDetail(kind){
         <td class="num">${list.length}</td>
         <td class="num ${sc>=75?"green":sc<50?"red":""}">${Math.round(sc)}</td>
         <td class="num">${w}</td>
-        <td class="num green">${yen(a.fee)}</td></tr>`};
+        <td class="num green">${yen(a.fee)}</td>
+        <td><button class="del" data-snav="${esc(list[0].storeName)}" aria-label="ナビ">🧭</button></td></tr>`};
     }).sort((a,b)=>b.n-a.n).map(x=>x.html);
-    el.innerHTML = T(["店舗","件","スコア","店待ち","報酬"], rows, "📍は位置を覚えている店です");
+    el.innerHTML = T(["店舗","件","スコア","店待ち","報酬",""], rows, "📍は位置を覚えている店。🧭でナビが開きます");
+    el.querySelectorAll("[data-snav]").forEach(b=> b.onclick = ()=> openNav(navTargetForStore(b.dataset.snav)));
     return;
   }
   if(kind==="areas"){
@@ -4275,13 +4308,19 @@ function growDetail(kind){
       const d = new Date(o.at);
       return `<tr><td>${d.getMonth()+1}/${d.getDate()} ${hhmm(d)}<br><span class="label">${esc(o.storeName||"店名なし")}</span></td>
         <td class="num">${yen(o.feeYen)}</td><td class="num">${Math.round(o.perKm)}</td>
-        <td class="num ${o.taken?"green":"red"}">${o.taken?"受けた":"見送り"}</td></tr>`;
+        <td class="num ${o.taken?"green":"red"}">${o.taken?"受けた":"見送り"}</td>
+        <td>${o.storeName?`<button class="del" data-onav2="${esc(o.id)}" aria-label="ナビ">🧭</button>`:""}</td></tr>`;
+    });
+    const navRows = ()=> el.querySelectorAll("[data-onav2]").forEach(b=> b.onclick = ()=>{
+      const o = offers.find(x=>x.id===b.dataset.onav2);
+      if(o) openNav(navTargetForStore(o.storeName, o.dropArea));
     });
     el.innerHTML = `<table style="margin-top:12px">
         <tr><th></th><th>件</th><th>平均報酬</th><th>円/km</th></tr>
         <tr><td>受けた</td><td class="num">${took.length}</td><td class="num green">${avg(took,o=>o.feeYen)}</td><td class="num">${avg(took,o=>o.perKm)}</td></tr>
         <tr><td>見送り</td><td class="num">${skip.length}</td><td class="num">${avg(skip,o=>o.feeYen)}</td><td class="num">${avg(skip,o=>o.perKm)}</td></tr>
-      </table>` + T(["直近の案件","報酬","円/km",""], recent);
+      </table>` + T(["直近の案件","報酬","円/km","",""], recent);
+    navRows();
     return;
   }
   if(kind==="entries"){
@@ -4369,7 +4408,7 @@ function renderNote(){
   <div class="card">
     <div style="font-size:19px;font-weight:800">${esc(nm)}</div>
     ${st ? `<div class="label" style="margin-top:4px">過去${st.count}件 ／ 平均${Math.round(st.avgScore)}点${st.waitAllN>=cfg.minSamples?` ／ 店待ち平均${r1(st.waitAll)}分`:""}</div>` : `<div class="label" style="margin-top:4px">まだ配達記録はありません</div>`}
-    ${geo ? `<button class="btn ghost sm" id="ntNav" style="margin-top:10px">🧭 この店までナビ</button>` : ""}
+    <button class="btn ghost sm" id="ntNav" style="margin-top:10px">🧭 この店までナビ${geo?"":"（店名で検索）"}</button>
   </div>
 
   <div class="card">
@@ -4407,7 +4446,7 @@ function renderNote(){
     storeNote[key] = {...cur, text:$("ntText").value.trim(), name:nm, at:new Date().toISOString()};
     saveNote(); sndSave(); vibe(40); toast("メモを保存しました");
   };
-  if($("ntNav")) $("ntNav").onclick = ()=> openNav(geo);
+  if($("ntNav")) $("ntNav").onclick = ()=> openNav(geo || {q:nm});
   $("ntAdd").onclick = ()=> $("ntFile").click();
   $("ntFile").onchange = async ev=>{
     const files = [...ev.target.files]; ev.target.value = "";
