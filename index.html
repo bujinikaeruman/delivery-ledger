@@ -330,6 +330,16 @@ body.big .note{font-size:15px}
 }
 .noteChip.warn{background:rgba(232,80,91,.16);color:var(--red)}
 .noteChip.good{background:rgba(47,184,138,.16);color:var(--green)}
+.dayRow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.dayRow:last-child{border-bottom:none}
+.dayRow .dh{display:flex;align-items:baseline;gap:8px}
+.dayRow .dd{font-size:15px;font-weight:800}
+.dayRow .dw{font-size:12px;color:var(--muted)}
+.dayRow .dt{margin-left:auto;font-size:20px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
+.dayRow .ds{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
+.dayRow .ds b{color:var(--ink);font-weight:800}
+.dayRow .dx{font-size:13px;margin-top:3px}
+body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 
 /* 育ち具合 */
 #grow{
@@ -750,6 +760,11 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card">
     <h2>今月の収支</h2>
     <div id="monthBox"></div>
+  </div>
+
+  <div class="card">
+    <h2>日別の収支</h2>
+    <div id="dayBox"></div>
   </div>
 </section>
 
@@ -2706,6 +2721,7 @@ function renderMoney(){
   });
 
   renderMonth();
+  renderDaily();
 }
 function renderMonth(){
   const mk = monthKey(new Date());
@@ -2714,28 +2730,63 @@ function renderMonth(){
   const q   = questShareInMonth(mk);
   const ex  = expenses.filter(x=> monthKey(x.purchasedAt)===mk).reduce((a,x)=>a+n(x.amountYen),0);
   const days = new Set(list.map(e=>dayKey(e.completedAt))).size;
-  const min = list.reduce((a,e)=>a+totalMinutes(e),0);
 
-  const byCat = {};
-  expenses.filter(x=> monthKey(x.purchasedAt)===mk).forEach(x=>{ byCat[x.category] = (byCat[x.category]||0)+n(x.amountYen); });
-  const catRows = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a])
-    .map(k=>`<tr><td>${CAT_NAME[k]||k}</td><td class="num red">−${yen(byCat[k])}</td></tr>`).join("");
+  // サービスごとの件数と金額
+  const bySvc = {};
+  list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
+  const svcRows = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
+    .map(k=>`<tr><td>${SVC_NAME[k]||k}</td><td class="num">${bySvc[k].n}件</td><td class="num green">${yen(bySvc[k].fee)}</td></tr>`).join("");
 
   $("monthBox").innerHTML = `
-  <div class="label">${new Date().getMonth()+1}月の実質手取り</div>
-  <div class="big green num" style="font-size:32px">${yen(fee+q-ex)}</div>
-  <div class="grid3" style="margin-top:10px">
+  <div class="label">${new Date().getMonth()+1}月の手取り</div>
+  <div class="big green num" style="font-size:34px">${yen(fee+q-ex)}</div>
+  <div class="grid2" style="margin-top:10px">
     <div class="stat"><div class="v num">${list.length}</div><div class="u">件</div></div>
     <div class="stat"><div class="v num">${days}</div><div class="u">稼働日</div></div>
-    <div class="stat"><div class="v num">${min>0?Math.round(fee/min*60).toLocaleString():"—"}</div><div class="u">円/時</div></div>
   </div>
-  <table style="margin-top:12px">
-    <tr><td>配達報酬</td><td class="num green">${yen(fee)}</td></tr>
-    <tr><td>クエスト（達成分の按分）</td><td class="num amber">${yen(q)}</td></tr>
-    ${catRows}
-    <tr><td><b>差引</b></td><td class="num"><b>${yen(fee+q-ex)}</b></td></tr>
-  </table>
-  <div class="note info">未達成のクエスト報酬は手取りに入れていません。達成したクエストの報酬は、その期間に配達した日へ件数比で割り振っています。</div>`;
+  ${svcRows ? `<table style="margin-top:12px">${svcRows}</table>` : `<div class="empty">今月の記録はまだありません</div>`}
+  ${(q>0||ex>0) ? `<table style="margin-top:10px">
+      ${q>0?`<tr><td>クエスト</td><td class="num amber">${yen(q)}</td></tr>`:""}
+      ${ex>0?`<tr><td>支出</td><td class="num red">−${yen(ex)}</td></tr>`:""}
+      <tr><td><b>差引</b></td><td class="num"><b>${yen(fee+q-ex)}</b></td></tr>
+    </table>` : ""}`;
+}
+
+/* 日別の収支。サービスごとの件数と金額だけを並べる */
+function renderDaily(){
+  const el = $("dayBox");
+  const byDay = {};
+  live().forEach(e=>{ (byDay[dayKey(e.completedAt)] ||= []).push(e); });
+  expenses.forEach(x=>{ (byDay[dayKey(x.purchasedAt)] ||= []); });
+
+  const keys = Object.keys(byDay).sort().reverse().slice(0, 14);
+  if(!keys.length){ el.innerHTML = `<div class="empty">記録が入るとここに日別で並びます</div>`; return; }
+
+  el.innerHTML = keys.map(k=>{
+    const list = byDay[k];
+    const fee = list.reduce((a,e)=>a+n(e.feeYen),0);
+    const ex  = expenses.filter(x=> dayKey(x.purchasedAt)===k).reduce((a,x)=>a+n(x.amountYen),0);
+    const qs  = questShareOnDay(k);
+    const d = new Date(k+"T00:00:00");
+    const bySvc = {};
+    list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
+    const svc = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
+      .map(x=>`${SVC_NAME[x]||x} <b>${bySvc[x].n}件 ${yen(bySvc[x].fee)}</b>`).join("　／　");
+    const net = fee + qs - ex;
+    return `<div class="dayRow">
+      <div class="dh">
+        <span class="dd">${k.slice(5).replace("-","/")}</span>
+        <span class="dw">（${"日月火水木金土"[d.getDay()]}）</span>
+        <span class="dt">${yen(net)}</span>
+      </div>
+      ${svc ? `<div class="ds">${svc}</div>` : `<div class="ds">配達なし</div>`}
+      ${(qs>0||ex>0) ? `<div class="dx">
+        ${qs>0?`<span class="amber">クエスト ${yen(qs)}</span>`:""}
+        ${(qs>0&&ex>0)?"　":""}
+        ${ex>0?`<span class="red">支出 −${yen(ex)}</span>`:""}
+      </div>` : ""}
+    </div>`;
+  }).join("") + `<div class="label" style="margin-top:10px">直近14日ぶん</div>`;
 }
 
 // クエスト追加
