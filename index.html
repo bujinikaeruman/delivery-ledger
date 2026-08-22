@@ -319,6 +319,9 @@ body.day .lvBar{background:rgba(0,0,0,.1)}
 .unl .bd b{display:block}
 .unl .bd span{font-size:12px;color:var(--muted)}
 .unl.off .bd b{color:var(--muted)}
+.stat.tap{cursor:pointer;position:relative}
+.stat.tap::after{content:"›";position:absolute;right:7px;top:6px;font-size:14px;color:var(--muted)}
+.stat.tap.on{outline:2px solid var(--amber);outline-offset:-2px}
 body.day .unl{border-bottom-color:rgba(0,0,0,.1)}
 
 /* APIキーの取り方 */
@@ -4040,6 +4043,130 @@ $("aiTest").onclick = async ()=>{
   }
 };
 
+/* 育ち具合の数字をタップしたときの中身 */
+function growDetail(kind){
+  const el = $("grDetail");
+  const done = live();
+  const group = f=>{
+    const m = {};
+    done.forEach(e=>{ const k=f(e); if(!k) return; (m[k] ||= []).push(e); });
+    return m;
+  };
+  const T = (head, rows, foot) => rows.length
+    ? `<table style="margin-top:12px"><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr>${rows.join("")}</table>${foot?`<div class="label" style="margin-top:8px">${foot}</div>`:""}`
+    : `<div class="empty">まだありません</div>`;
+
+  if(kind==="stores"){
+    const g = group(e=> normStore(e.storeName));
+    const rows = Object.keys(g).map(k=>{
+      const list = g[k], a = agg(list);
+      const sc = list.reduce((x,e)=>x+score(e).value,0)/list.length;
+      const w = (a.wait!=null && a.waitN>=cfg.minSamples) ? r1(a.wait)+"分" : "—";
+      return {n:list.length, html:`<tr>
+        <td>${esc(list[0].storeName)}${storeGeo[k]?' <span class="label">📍</span>':''}</td>
+        <td class="num">${list.length}</td>
+        <td class="num ${sc>=75?"green":sc<50?"red":""}">${Math.round(sc)}</td>
+        <td class="num">${w}</td>
+        <td class="num green">${yen(a.fee)}</td></tr>`};
+    }).sort((a,b)=>b.n-a.n).map(x=>x.html);
+    el.innerHTML = T(["店舗","件","スコア","店待ち","報酬"], rows, "📍は位置を覚えている店です");
+    return;
+  }
+  if(kind==="areas"){
+    const g = group(e=> normArea(e.dropArea));
+    const rows = Object.keys(g).map(k=>{
+      const list = g[k], a = agg(list);
+      const f = areaFlowStats(list[0].dropArea);
+      const sc = list.reduce((x,e)=>x+score(e).value,0)/list.length;
+      return {n:list.length, html:`<tr>
+        <td>${esc(list[0].dropArea)}</td><td class="num">${list.length}</td>
+        <td class="num ${sc>=75?"green":sc<50?"red":""}">${Math.round(sc)}</td>
+        <td class="num ${f&&f.avg>12?"red":(f&&f.avg<=8?"green":"")}">${f?r1(f.avg)+"分":"—"}</td>
+        <td class="num green">${yen(a.fee)}</td></tr>`};
+    }).sort((a,b)=>b.n-a.n).map(x=>x.html);
+    el.innerHTML = T(["エリア","件","スコア","次まで","報酬"], rows, "「次まで」は配達後に次が入るまでの平均です");
+    return;
+  }
+  if(kind==="builds"){
+    const g = group(e=> normBuild(e.dropBuilding));
+    const rows = Object.keys(g).map(k=>{
+      const list = g[k];
+      const hs = list.filter(e=> e.handoffSeconds!=null).map(e=>e.handoffSeconds);
+      const avg = hs.length ? hs.reduce((a,b)=>a+b,0)/hs.length : null;
+      return {v:avg||0, html:`<tr>
+        <td>${esc(list[0].dropBuilding)}<br><span class="label">${BLD_NAME[list[0].buildingType]||""}</span></td>
+        <td class="num">${list.length}</td>
+        <td class="num ${avg&&avg>=300?"red":""}">${avg?mmss(avg):"—"}</td></tr>`};
+    }).sort((a,b)=>b.v-a.v).map(x=>x.html);
+    el.innerHTML = T(["建物","件","平均受渡"], rows, "受渡が長い順。棟まで記録し、部屋番号は保存していません");
+    return;
+  }
+  if(kind==="geo"){
+    const list = Object.keys(storeGeo).map(k=>({key:k, ...storeGeo[k]})).sort((a,b)=>b.n-a.n);
+    el.innerHTML = list.length ? list.map(x=>`<div class="item">
+        <div class="m"><div class="nm">${esc(x.name||x.key)}</div><div class="sm">${x.n}回ぶんの記録から</div></div>
+        <button class="btn ghost sm" data-gnav="${esc(x.key)}" style="width:auto;padding:9px 13px">🧭 ナビ</button>
+      </div>`).join("") : `<div class="empty">設定で位置情報をオンにして「店に到着」を押すと覚えます</div>`;
+    el.querySelectorAll("[data-gnav]").forEach(b=> b.onclick = ()=> openNav(storeGeo[b.dataset.gnav]));
+    return;
+  }
+  if(kind==="offers"){
+    const took = offers.filter(o=>o.taken), skip = offers.filter(o=>!o.taken);
+    const avg = (a,f)=> a.length ? Math.round(a.reduce((x,y)=>x+f(y),0)/a.length) : "—";
+    const recent = [...offers].sort((a,b)=> new Date(b.at)-new Date(a.at)).slice(0,10).map(o=>{
+      const d = new Date(o.at);
+      return `<tr><td>${d.getMonth()+1}/${d.getDate()} ${hhmm(d)}<br><span class="label">${esc(o.storeName||"店名なし")}</span></td>
+        <td class="num">${yen(o.feeYen)}</td><td class="num">${Math.round(o.perKm)}</td>
+        <td class="num ${o.taken?"green":"red"}">${o.taken?"受けた":"見送り"}</td></tr>`;
+    });
+    el.innerHTML = `<table style="margin-top:12px">
+        <tr><th></th><th>件</th><th>平均報酬</th><th>円/km</th></tr>
+        <tr><td>受けた</td><td class="num">${took.length}</td><td class="num green">${avg(took,o=>o.feeYen)}</td><td class="num">${avg(took,o=>o.perKm)}</td></tr>
+        <tr><td>見送った</td><td class="num">${skip.length}</td><td class="num">${avg(skip,o=>o.feeYen)}</td><td class="num">${avg(skip,o=>o.perKm)}</td></tr>
+      </table>` + T(["直近の案件","報酬","円/km",""], recent);
+    return;
+  }
+  if(kind==="entries"){
+    const bySvc = {};
+    done.forEach(e=>{ (bySvc[e.service] ||= []).push(e); });
+    const rows = Object.keys(bySvc).map(k=>{
+      const a = agg(bySvc[k]);
+      return `<tr><td>${SVC_NAME[k]||k}</td><td class="num">${a.n}</td>
+        <td class="num green">${yen(a.fee)}</td><td class="num">${Math.round(a.hr).toLocaleString()}</td></tr>`;
+    });
+    el.innerHTML = T(["サービス","件","報酬","円/時"], rows) +
+      `<button class="btn ghost sm" id="grToHist" style="margin-top:10px">履歴をすべて見る</button>`;
+    $("grToHist").onclick = ()=>{ $("grow").classList.remove("on"); show("hist"); };
+    return;
+  }
+  if(kind==="fee"){
+    const byM = {};
+    done.forEach(e=>{ (byM[monthKey(e.completedAt)] ||= []).push(e); });
+    const rows = Object.keys(byM).sort().reverse().map(k=>{
+      const a = agg(byM[k]);
+      const ex = expenses.filter(x=> monthKey(x.purchasedAt)===k).reduce((s,x)=>s+n(x.amountYen),0);
+      return `<tr><td>${k.replace("-","/")}</td><td class="num">${a.n}</td>
+        <td class="num green">${yen(a.fee)}</td><td class="num red">${ex?"−"+yen(ex):"—"}</td>
+        <td class="num"><b>${yen(a.fee-ex)}</b></td></tr>`;
+    });
+    el.innerHTML = T(["月","件","報酬","支出","差引"], rows);
+    return;
+  }
+  if(kind==="days"){
+    const byD = {};
+    done.forEach(e=>{ (byD[dayKey(e.completedAt)] ||= []).push(e); });
+    const rows = Object.keys(byD).sort().reverse().slice(0,14).map(k=>{
+      const a = agg(byD[k]);
+      const d = new Date(k+"T00:00:00");
+      return `<tr><td>${k.slice(5).replace("-","/")}（${"日月火水木金土"[d.getDay()]}）</td>
+        <td class="num">${a.n}</td><td class="num green">${yen(a.fee)}</td>
+        <td class="num">${a.min>0?Math.round(a.hr).toLocaleString():"—"}</td></tr>`;
+    });
+    el.innerHTML = T(["日付","件","報酬","円/時"], rows, "直近14日ぶん");
+    return;
+  }
+}
+
 /* =========================================================
    アプリの育ち具合
    どのサービスで走っていても、店に行って受け取って届けるのは同じ。
@@ -4110,20 +4237,22 @@ function renderGrow(){
   <div class="card">
     <h2>覚えたこと</h2>
     <div class="grid3">
-      <div class="stat"><div class="v num">${g.stores}</div><div class="u">店舗</div></div>
-      <div class="stat"><div class="v num">${g.areas}</div><div class="u">エリア</div></div>
-      <div class="stat"><div class="v num">${g.builds}</div><div class="u">建物</div></div>
+      <div class="stat tap" data-grow="stores"><div class="v num">${g.stores}</div><div class="u">店舗</div></div>
+      <div class="stat tap" data-grow="areas"><div class="v num">${g.areas}</div><div class="u">エリア</div></div>
+      <div class="stat tap" data-grow="builds"><div class="v num">${g.builds}</div><div class="u">建物</div></div>
     </div>
     <div class="grid3" style="margin-top:10px">
-      <div class="stat"><div class="v num">${g.n}</div><div class="u">配達記録</div></div>
-      <div class="stat"><div class="v num">${g.offers}</div><div class="u">案件記録</div></div>
-      <div class="stat"><div class="v num">${g.geo}</div><div class="u">位置つき店</div></div>
+      <div class="stat tap" data-grow="entries"><div class="v num">${g.n}</div><div class="u">配達記録</div></div>
+      <div class="stat tap" data-grow="offers"><div class="v num">${g.offers}</div><div class="u">案件記録</div></div>
+      <div class="stat tap" data-grow="geo"><div class="v num">${g.geo}</div><div class="u">位置つき店</div></div>
     </div>
     <div class="grid3" style="margin-top:10px">
-      <div class="stat"><div class="v num green">${yen(g.fee)}</div><div class="u">総報酬</div></div>
-      <div class="stat"><div class="v num">${g.days}</div><div class="u">稼働日</div></div>
+      <div class="stat tap" data-grow="fee"><div class="v num green">${yen(g.fee)}</div><div class="u">総報酬</div></div>
+      <div class="stat tap" data-grow="days"><div class="v num">${g.days}</div><div class="u">稼働日</div></div>
       <div class="stat"><div class="v num">${g.pts}</div><div class="u">ポイント</div></div>
     </div>
+    <div class="label" style="margin-top:10px;text-align:center">数字をタップすると中身が見られます</div>
+    <div id="grDetail"></div>
   </div>
 
   <div class="card">
@@ -4145,6 +4274,17 @@ function renderGrow(){
   </div>
 
   <button class="btn primary" id="grShare">この育ち具合を仲間に見せる</button>`;
+
+  // 数字をタップすると中身が開く（もう一度押すと閉じる）
+  $("grBody").querySelectorAll("[data-grow]").forEach(t=> t.onclick = ()=>{
+    const on = t.classList.contains("on");
+    $("grBody").querySelectorAll("[data-grow]").forEach(x=>x.classList.remove("on"));
+    if(on){ $("grDetail").innerHTML = ""; return; }
+    t.classList.add("on");
+    growDetail(t.dataset.grow);
+    // 端末によっては使えないので、あれば使う程度にしておく
+    try{ if($("grDetail").scrollIntoView) $("grDetail").scrollIntoView({behavior:"smooth", block:"nearest"}); }catch(e){}
+  });
 
   $("grShare").onclick = async ()=>{
     const text =
