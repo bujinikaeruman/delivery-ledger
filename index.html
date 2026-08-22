@@ -292,6 +292,25 @@ body.big .note{font-size:15px}
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
 #quick{position:fixed}
 
+/* 配達1件の詳細 */
+#detail{
+  position:fixed;inset:0;z-index:87;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#detail.on{display:flex}
+#detailTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+#detailTop h2{margin:0;font-size:18px;font-weight:800}
+#detailTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.brk{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.brk:last-child{border-bottom:none}
+.brk .k{color:var(--muted);font-size:13px;min-width:6.5em}
+.brk .v{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+body.day .brk{border-bottom-color:rgba(0,0,0,.1)}
+.bar2{height:7px;background:rgba(255,255,255,.09);border-radius:5px;overflow:hidden;margin-top:5px}
+.bar2 i{display:block;height:100%;border-radius:5px;background:var(--amber)}
+body.day .bar2{background:rgba(0,0,0,.1)}
+.item.tap{cursor:pointer}
+
 /* 1日の締め */
 #close{
   position:fixed;inset:0;z-index:89;background:var(--navy);display:none;flex-direction:column;
@@ -837,6 +856,16 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div style="height:20px"></div>
 </div>
 
+<!-- 配達1件の詳細 -->
+<div id="detail">
+  <div id="detailTop">
+    <h2>配達の詳細</h2>
+    <button id="detailX">閉じる</button>
+  </div>
+  <div id="detailBody"></div>
+  <div style="height:20px"></div>
+</div>
+
 <!-- 1日の締め -->
 <div id="close">
   <div id="closeTop">
@@ -1128,17 +1157,24 @@ const perKm   = e => { const k = totalKm(e);      return k>0 ? n(e.feeYen)/k : 0
 function score(e){
   const hr = hourly(e), km = perKm(e);
   let p = 0;
-  if(hr>=cfg.hrGo*1.2) p+=45; else if(hr>=cfg.hrGo) p+=35; else if(hr>=cfg.hrCond) p+=24; else p+=12;
-  if(km>=cfg.kmGo*1.2) p+=35; else if(km>=cfg.kmGo) p+=27; else if(km>=cfg.kmCond) p+=17; else p+=8;
+  let tp, dp, lp = null;
+  if(hr>=cfg.hrGo*1.2) tp=45; else if(hr>=cfg.hrGo) tp=35; else if(hr>=cfg.hrCond) tp=24; else tp=12;
+  if(km>=cfg.kmGo*1.2) dp=35; else if(km>=cfg.kmGo) dp=27; else if(km>=cfg.kmCond) dp=17; else dp=8;
+  p = tp + dp;
   const measured = (e.pickupWaitSeconds!=null)||(e.handoffSeconds!=null);
-  let ref = false;
+  let ref = false, ratio = null;
   if(measured){
     const svcMin = (n(e.pickupWaitSeconds)+n(e.handoffSeconds))/60;
     const tot = totalMinutes(e);
-    const ratio = tot>0 ? svcMin/tot : 0;
-    if(ratio<=0.25) p+=20; else if(ratio<=0.40) p+=12; else p+=4;
+    ratio = tot>0 ? svcMin/tot : 0;
+    if(ratio<=0.25) lp=20; else if(ratio<=0.40) lp=12; else lp=4;
+    p += lp;
   }else{ p = Math.round(p*100/80); ref = true; }
-  return {value:Math.max(0,Math.min(100,Math.round(p))), reference:ref, hourly:hr, perKm:km};
+  return {
+    value: Math.max(0,Math.min(100,Math.round(p))), reference:ref,
+    hourly:hr, perKm:km,
+    parts:{time:tp, dist:dp, load:lp, ratio}
+  };
 }
 function scoreBadge(s){
   const cls = s.value>=75?"b-hi":s.value>=50?"b-mid":"b-low";
@@ -1303,11 +1339,13 @@ function renderToday(){
   const recent = [...live()].sort((a,b)=> new Date(b.completedAt)-new Date(a.completedAt)).slice(0,5);
   $("tdRecent").innerHTML = recent.length ? recent.map(e=>{
     const s = score(e), d = new Date(e.completedAt);
-    return `<div class="item"><div class="m">
+    return `<div class="item tap" data-open="${e.id}"><div class="m">
       <div class="nm">${esc(e.storeName)||"（店舗名なし）"}</div>
       <div class="sm">${hhmm(d)} ・ ${SVC_NAME[e.service]||""} ・ ${r1(totalKm(e))}km ・ ${scoreBadge(s)}</div>
     </div><div class="fee num">${yen(e.feeYen)}</div></div>`;
   }).join("") : `<div class="empty">まだ記録がありません。<br>1件記録すると採算の分析がはじまります。</div>`;
+
+  $("tdRecent").querySelectorAll("[data-open]").forEach(row=> row.onclick = ()=> openDetail(row.dataset.open));
 
   refreshStoreList();
 }
@@ -2165,6 +2203,94 @@ $("eAdd").onclick = ()=>{
 /* =========================================================
    履歴
    ========================================================= */
+/* 配達1件の詳細。
+   どこで時間を使ったか、点数がどう付いたかを分解して見せる。 */
+function openDetail(id){
+  const e = entries.find(x=>x.id===id);
+  if(!e) return;
+  const s = score(e);
+  const d = new Date(e.completedAt);
+  const wait = n(e.pickupWaitSeconds)/60, hand = n(e.handoffSeconds)/60;
+  const drive = n(e.durationMinutes), back = n(e.returnMinutes);
+  const tot = totalMinutes(e);
+  const seg = (label, min, color)=> tot>0 && min>0
+    ? `<div class="brk"><span class="k">${label}</span>
+        <span style="flex:1"><span class="bar2"><i style="width:${Math.min(100,min/tot*100)}%;background:${color}"></i></span></span>
+        <span class="v">${min>=1?Math.round(min)+"分":Math.round(min*60)+"秒"}</span></div>` : "";
+
+  const st = storeStats(e.storeName);
+  const bt = buildStats(e.dropBuilding);
+  const g = gapOf(e);
+
+  $("detailBody").innerHTML = `
+  <div class="card">
+    <div style="font-size:19px;font-weight:800">${esc(e.storeName)||"（店舗名なし）"}</div>
+    <div class="label" style="margin-top:4px">${d.getMonth()+1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}） ${hhmm(d)} ・ ${SVC_NAME[e.service]||""}${e.batchSize>1?` ・ 相乗せ${e.batchSize}件`:""}</div>
+    <div class="big green num" style="margin-top:10px">${yen(e.feeYen)}</div>
+    <div style="margin-top:10px">${scoreBadge(s)}</div>
+  </div>
+
+  <div class="card">
+    <h2>採算</h2>
+    <div class="grid3">
+      <div class="stat"><div class="v num">${Math.round(s.hourly).toLocaleString()}</div><div class="u">円/時</div></div>
+      <div class="stat"><div class="v num">${Math.round(s.perKm)}</div><div class="u">円/km</div></div>
+      <div class="stat"><div class="v num">${r1(totalKm(e))}</div><div class="u">km</div></div>
+    </div>
+    <div class="brk" style="margin-top:10px"><span class="k">時間効率</span><span class="v">${s.parts.time} / 45</span></div>
+    <div class="brk"><span class="k">距離効率</span><span class="v">${s.parts.dist} / 35</span></div>
+    <div class="brk"><span class="k">時間の使い方</span><span class="v">${s.parts.load!=null?`${s.parts.load} / 20`:"未計測"}</span></div>
+    ${s.parts.ratio!=null?`<div class="label">拘束時間のうち${Math.round(s.parts.ratio*100)}%が店待ちと受渡です</div>`:""}
+    ${s.reference?`<div class="note info">タイマー未計測のため、80点満点を換算した参考値です。</div>`:""}
+  </div>
+
+  <div class="card">
+    <h2>時間の内訳（合計${Math.round(tot)}分）</h2>
+    ${seg("店待ち", wait, "var(--red)")}
+    ${seg("走行", drive, "var(--amber)")}
+    ${seg("受渡", hand, "var(--green)")}
+    ${seg("戻り", back, "#2E6FB7")}
+    ${tot<=0?`<div class="empty">時間が記録されていません</div>`:""}
+  </div>
+
+  ${(e.dropArea||e.dropBuilding||e.buildingType||e.note)?`<div class="card">
+    <h2>配達先とメモ</h2>
+    ${e.dropArea?`<div class="brk"><span class="k">エリア</span><span class="v">${esc(e.dropArea)}</span></div>`:""}
+    ${e.dropBuilding?`<div class="brk"><span class="k">建物</span><span class="v">${esc(e.dropBuilding)}</span></div>`:""}
+    ${e.buildingType?`<div class="brk"><span class="k">種別</span><span class="v">${BLD_NAME[e.buildingType]||""}</span></div>`:""}
+    ${e.note?`<div class="brk"><span class="k">メモ</span><span class="v" style="font-weight:600;text-align:right">${esc(e.note)}</span></div>`:""}
+  </div>`:""}
+
+  ${g?`<div class="card">
+    <h2>判定したときの見込みとの差</h2>
+    ${g.wait!=null?`<div class="brk"><span class="k">店待ち</span><span class="v ${g.wait>=2?"red":(g.wait<=-2?"green":"")}">${g.wait>0?"+":""}${r1(g.wait)}分</span></div>`:""}
+    ${g.dur!=null?`<div class="brk"><span class="k">走行</span><span class="v ${g.dur>=2?"red":(g.dur<=-2?"green":"")}">${g.dur>0?"+":""}${r1(g.dur)}分</span></div>`:""}
+    <div class="label">プラスは「見込みより時間がかかった」です</div>
+  </div>`:""}
+
+  ${(st&&st.count>=cfg.minSamples)||(bt&&bt.count>=cfg.minSamples)?`<div class="card">
+    <h2>過去との比較</h2>
+    ${st&&st.count>=cfg.minSamples?`<div class="brk"><span class="k">この店の平均</span><span class="v">${Math.round(st.avgScore)}点 ／ ${Math.round(st.avgHourly).toLocaleString()}円/時（${st.count}件）</span></div>`:""}
+    ${bt&&bt.count>=cfg.minSamples&&bt.handoffN>=cfg.minSamples?`<div class="brk"><span class="k">この建物の受渡</span><span class="v">平均${r1(bt.handoff)}分（${bt.count}件）</span></div>`:""}
+  </div>`:""}
+
+  <button class="btn primary" id="dtEdit" style="margin-bottom:10px">この記録を修正する</button>
+  <button class="btn danger" id="dtDel">この記録を削除する</button>`;
+
+  $("dtEdit").onclick = ()=>{
+    $("detail").classList.remove("on");
+    loadEntryToForm(e); show("add");
+  };
+  $("dtDel").onclick = ()=>{
+    if(!confirm("この配達を削除しますか？")) return;
+    entries = entries.filter(x=>x.id!==e.id);
+    saveEntries(); $("detail").classList.remove("on");
+    renderHist(); renderToday(); toast("削除しました");
+  };
+  $("detail").classList.add("on");
+}
+$("detailX").onclick = ()=> $("detail").classList.remove("on");
+
 function renderHist(){
   const el = $("histList");
   if(!entries.length){ el.innerHTML = `<div class="empty">まだ記録がありません</div>`; return; }
@@ -2187,23 +2313,26 @@ function renderHist(){
         </div><button class="btn primary sm" data-fill="${e.id}" style="width:auto;padding:9px 14px">入力</button>
         <button class="del" data-id="${e.id}" aria-label="削除">✕</button></div>`;
       }
-      return `<div class="item"><div class="m">
+      return `<div class="item tap" data-open="${e.id}"><div class="m">
         <div class="nm">${esc(e.storeName)||"（店舗名なし）"}</div>
         <div class="sm">${meta}</div>
-        <div class="sm" style="margin-top:3px">${scoreBadge(score(e))}</div>
+        <div class="sm" style="margin-top:3px">${scoreBadge(score(e))} <span class="label">詳細 ›</span></div>
       </div><div class="fee num">${yen(e.feeYen)}</div>
       <button class="del" data-id="${e.id}" aria-label="削除">✕</button></div>`;
     }).join("");
     return `<div class="daykey">${k.slice(5).replace("-","/")}（${"日月火水木金土"[d.getDay()]}） ${list.length}件<span class="num">${yen(sum)}</span></div>${rows}`;
   }).join("");
-  el.querySelectorAll(".del").forEach(b=> b.onclick = ()=>{
+  el.querySelectorAll(".del").forEach(b=> b.onclick = ev=>{
+    ev.stopPropagation();
     if(!confirm("この配達を削除しますか？")) return;
     entries = entries.filter(x=>x.id!==b.dataset.id); saveEntries(); renderHist(); toast("削除しました");
   });
-  el.querySelectorAll("[data-fill]").forEach(b=> b.onclick = ()=>{
+  el.querySelectorAll("[data-fill]").forEach(b=> b.onclick = ev=>{
+    ev.stopPropagation();
     const e = entries.find(x=>x.id===b.dataset.fill);
     if(e){ loadEntryToForm(e); show("add"); }
   });
+  el.querySelectorAll("[data-open]").forEach(row=> row.onclick = ()=> openDetail(row.dataset.open));
 }
 
 /* =========================================================
