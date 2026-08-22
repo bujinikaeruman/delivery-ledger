@@ -511,9 +511,12 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <label class="f"><span>建物名・棟</span><input id="sBldName" list="buildList" placeholder="◯◯タワー / △△団地 5棟"></label>
     <datalist id="buildList"></datalist>
     <div class="row">
-      <label class="f"><span>案件距離（km）</span><input id="sDist" type="number" inputmode="decimal" step="0.1" placeholder="2.5"></label>
-      <label class="f"><span>戻り距離（km）</span><input id="sRet" type="number" inputmode="decimal" step="0.1" placeholder="1.5"></label>
+      <label class="f"><span>店まで（km）</span><input id="sToStore" type="number" inputmode="decimal" step="0.1" placeholder="1.2"></label>
+      <label class="f"><span>店→お届け先（km）</span><input id="sDist" type="number" inputmode="decimal" step="0.1" placeholder="2.5"></label>
     </div>
+    <label class="f"><span>戻り距離（km）</span><input id="sRet" type="number" inputmode="decimal" step="0.1" placeholder="1.5"></label>
+    <button class="btn ghost sm" id="estBtn" style="margin-bottom:10px">📍 現在地から店までを見積もる</button>
+    <div id="svcHint"></div>
     <div class="row">
       <label class="f"><span>配送時間（分）</span><input id="sDur" type="number" inputmode="numeric" placeholder="15"></label>
       <label class="f"><span>戻り時間（分）</span><input id="sRetMin" type="number" inputmode="numeric" placeholder="8"></label>
@@ -522,7 +525,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <label class="f"><span>店待ち想定（分）</span><input id="sWait" type="number" inputmode="numeric" placeholder="5"></label>
       <label class="f"><span>配達件数（相乗せ）</span><input id="sDropCount" type="number" inputmode="numeric" placeholder="1"></label>
     </div>
-    <div class="note info" style="margin-top:0">戻り距離を足すなら戻り時間も足す。片道だけで時給を出すと必ず高く出ます。</div>
+    <div class="note info" style="margin-top:0">戻り距離を足すなら戻り時間も足す。片道だけで時給を出すと必ず高く出ます。<br>「店まで」の所要時間は平均速度から自動で足しています。</div>
   </div>
 
   <div class="card">
@@ -762,6 +765,15 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   </div>
 
   <div class="card">
+    <h2>店の位置を覚える（位置情報）</h2>
+    <button class="btn ghost sm" id="tglGps" style="margin-bottom:8px">位置情報：オフ</button>
+    <label class="f"><span>道のりの補正倍率（直線距離→実走行）</span><input id="cfgDetour" type="number" inputmode="decimal" step="0.05"></label>
+    <button class="btn primary sm" id="detSave">補正を保存</button>
+    <div class="label" id="geoCount" style="margin-top:10px"></div>
+    <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
+  </div>
+
+  <div class="card">
     <h2>お知らせ要約（Gemini APIキー）</h2>
     <label class="f"><span>APIキー</span><input id="cfgAiKey" type="password" placeholder="AIza… ではじまる文字列"></label>
     <label class="f"><span>モデル名</span><input id="cfgAiModel" placeholder="gemini-3.5-flash"></label>
@@ -944,6 +956,7 @@ const K_STATE = "delivery-ledger.working.v1";   // 入力途中・計測中の�
 const K_SUM   = "delivery-ledger.summaries.v1"; // 公式アプリの日次サマリー
 const K_LOSS  = "delivery-ledger.losses.v1";    // キャンセル等で捨てた時間
 const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送った案件の記録
+const K_GEO   = "delivery-ledger.storegeo.v1";  // 店の位置（店に到着したときに覚える）
 
 const SVC_NAME = {"uber-eats":"Uber Eats","demae-can":"出前館","rocket-now":"Rocket Now","other":"その他","all":"すべて"};
 const BLD_NAME = {house:"戸建て",apartment:"アパート",mansion:"マンション","housing-complex":"団地","tower-mansion":"タワマン","office-commercial":"オフィス・商業",other:"その他"};
@@ -953,10 +966,11 @@ const CAT_NAME = {fuel:"燃料・充電",food:"食事",convenience:"コンビニ
 const CFG_DEF = {
   seenGuide:false,
   hrGo:1500, hrCond:1100, kmGo:300, kmCond:220, waitWarnMin:8, minSamples:2,
-  dayMode:false, bigMode:false, sound:true, chime:true, closedOn:"", aiKey:"", aiModel:"gemini-3.5-flash", speedKmh:20
+  dayMode:false, bigMode:false, sound:true, chime:true, closedOn:"", useGps:false, detour:1.3, aiKey:"", aiModel:"gemini-3.5-flash", speedKmh:20
 };
 
 let entries = [], quests = [], expenses = [], aiNotes = [], summaries = [], losses = [], offers = [], cfg = {...CFG_DEF};
+let storeGeo = {};   // 店名 → {lat,lng,n}
 
 /* ---------- 保存・読み込み ---------- */
 function readArr(key){ try{ const v = JSON.parse(localStorage.getItem(key)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
@@ -968,6 +982,7 @@ function load(){
   summaries = readArr(K_SUM);
   losses = readArr(K_LOSS);
   offers = readArr(K_OFFER);
+  try{ storeGeo = JSON.parse(localStorage.getItem(K_GEO)||"{}") || {}; }catch(e){ storeGeo = {}; }
   try{ cfg = {...CFG_DEF, ...(JSON.parse(localStorage.getItem(K_CFG)||"{}"))}; }catch(e){ cfg = {...CFG_DEF}; }
 }
 // ワンタップ記録で作った「金額未入力」のレコードは、埋まるまで平均や報酬の集計に入れない
@@ -980,6 +995,7 @@ const saveAi      = ()=> localStorage.setItem(K_AI,    JSON.stringify(aiNotes.sl
 const saveSum     = ()=> localStorage.setItem(K_SUM,   JSON.stringify(summaries));
 const saveLoss    = ()=> localStorage.setItem(K_LOSS,  JSON.stringify(losses));
 const saveOffer   = ()=> localStorage.setItem(K_OFFER, JSON.stringify(offers.slice(-3000)));
+const saveGeo     = ()=> localStorage.setItem(K_GEO,   JSON.stringify(storeGeo));
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
@@ -1115,7 +1131,7 @@ function saveState(){
       },
       scan: {
         svc:$("sSvc").value, store:$("sStore").value, area:$("sArea").value, bldName:$("sBldName").value, fee:$("sFee").value,
-        dist:$("sDist").value, ret:$("sRet").value, dur:$("sDur").value,
+        toStore:$("sToStore").value, dist:$("sDist").value, ret:$("sRet").value, dur:$("sDur").value,
         retMin:$("sRetMin").value, wait:$("sWait").value, dc:$("sDropCount").value
       },
       cash: {amt:$("cashAmt").value, got:$("cashGot").value}
@@ -1144,7 +1160,7 @@ function restoreState(){
   if(s.scan){
     const c = s.scan;
     $("sSvc").value=c.svc||"uber-eats"; $("sStore").value=c.store||""; $("sArea").value=c.area||""; $("sBldName").value=c.bldName||""; $("sFee").value=c.fee||"";
-    $("sDist").value=c.dist||""; $("sRet").value=c.ret||""; $("sDur").value=c.dur||"";
+    $("sToStore").value=c.toStore||""; $("sDist").value=c.dist||""; $("sRet").value=c.ret||""; $("sDur").value=c.dur||"";
     $("sRetMin").value=c.retMin||""; $("sWait").value=c.wait||""; $("sDropCount").value=c.dc||"";
   }
   if(s.cash){ $("cashAmt").value=s.cash.amt||""; $("cashGot").value=s.cash.got||""; }
@@ -1267,6 +1283,8 @@ function applyDisplay(){
   if($("tglBig")) $("tglBig").textContent = "巨大ボタン：" + (cfg.bigMode?"オン":"オフ");
   if($("tglSnd")) $("tglSnd").textContent = "タップ音：" + (cfg.sound?"オン":"オフ");
   if($("tglChime")) $("tglChime").textContent = "1分ごとのお知らせ：" + (cfg.chime?"オン":"オフ");
+  if($("tglGps")) $("tglGps").textContent = "位置情報：" + (cfg.useGps?"オン":"オフ");
+  if($("estBtn")) $("estBtn").style.display = cfg.useGps ? "block" : "none";
   // AI機能はキーを入れた人にだけ出す（キーが無い人にはボタン自体を見せない）
   const hasKey = !!(cfg.aiKey||"").trim();
   ["goShot","goAi","ofPick","adShot"].forEach(id=>{ if($(id)) $(id).style.display = hasKey ? "block" : "none"; });
@@ -1372,12 +1390,15 @@ function refreshStoreList(){
 /* =========================================================
    案件チェック
    ========================================================= */
-["sFee","sDist","sRet","sDur","sRetMin","sWait","sDropCount","sStore","sArea","sBldName","sSvc"].forEach(id=> $(id).addEventListener("input", ()=>{ calcScan(); saveState(); }));
+["sFee","sToStore","sDist","sRet","sDur","sRetMin","sWait","sDropCount","sStore","sArea","sBldName","sSvc"].forEach(id=> $(id).addEventListener("input", ()=>{ calcScan(); saveState(); }));
 
 function calcScan(){
   const fee = n($("sFee").value);
-  const km  = n($("sDist").value)+n($("sRet").value);
-  const min = n($("sDur").value)+n($("sRetMin").value)+n($("sWait").value);
+  const toStore = n($("sToStore").value);
+  const sp0 = ridingSpeed();
+  const toStoreMin = toStore>0 ? toStore/sp0.v*60 : 0;   // 店までの時間は平均速度から
+  const km  = toStore + n($("sDist").value) + n($("sRet").value);
+  const min = toStoreMin + n($("sDur").value) + n($("sRetMin").value) + n($("sWait").value);
   const bn  = activeBonus($("sSvc").value);
 
   const sig = $("sig");
@@ -1548,7 +1569,7 @@ function logOffer(taken){
     storeName: $("sStore").value.trim(),
     dropArea: cleanArea($("sArea").value),
     dropBuilding: cleanBuilding($("sBldName").value),
-    feeYen: fee, km, minutes: min,
+    feeYen: fee, km, minutes: min, toStoreKm: n($("sToStore").value),
     dropCount: Math.max(1, n($("sDropCount").value)||1),
     hourly: min>0 ? fee/min*60 : 0,
     perKm: km>0 ? fee/km : 0,
@@ -1564,7 +1585,8 @@ $("toSkip").onclick = ()=>{
   if(!o){ toast("報酬を入れてください"); return; }
   sndEnd(); vibe(30);
   toast(`見送りとして記録しました（${Math.round(o.perKm)}円/km）`);
-  ["sFee","sDist","sRet","sDur","sRetMin","sWait","sStore","sArea","sBldName"].forEach(id=> $(id).value="");
+  ["sFee","sToStore","sDist","sRet","sDur","sRetMin","sWait","sStore","sArea","sBldName"].forEach(id=> $(id).value="");
+  $("svcHint").innerHTML = "";
   if($("sDropCount")) $("sDropCount").value = "";
   $("ofOut").innerHTML = ""; calcScan(); saveState();
 };
@@ -1626,6 +1648,77 @@ function renderOffers(){
   };
 }
 
+/* =========================================================
+   店の位置を覚える
+   「店に到着」を押した瞬間の位置＝その店の位置として記録する。
+   次に同じ店の案件が来たとき、現在地からの距離を見積もれる。
+   出前館のように案件画面に「店までの距離」が出ない場合に効く。
+   ========================================================= */
+function getPos(timeout){
+  return new Promise((res, rej)=>{
+    if(!navigator.geolocation) return rej(new Error("この端末では位置情報を使えません"));
+    navigator.geolocation.getCurrentPosition(
+      p => res({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy}),
+      e => rej(new Error(e.code===1 ? "位置情報が許可されていません" : "現在地を取得できませんでした")),
+      {enableHighAccuracy:true, timeout: timeout||8000, maximumAge:15000}
+    );
+  });
+}
+// 2点間の直線距離（km）
+function distKm(a, b){
+  const R = 6371, rad = d => d*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const x = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+// 店に着いたときに位置を覚える（何度も来る店は平均していく）
+async function rememberStore(name){
+  if(!cfg.useGps) return;
+  const key = normStore(name);
+  if(!key) return;
+  try{
+    const p = await getPos(6000);
+    if(p.acc > 200) return;                    // 精度が粗いときは覚えない
+    const g = storeGeo[key];
+    if(g){
+      const n2 = g.n + 1;
+      storeGeo[key] = {lat:(g.lat*g.n + p.lat)/n2, lng:(g.lng*g.n + p.lng)/n2, n:n2, name};
+    }else{
+      storeGeo[key] = {lat:p.lat, lng:p.lng, n:1, name};
+    }
+    saveGeo();
+  }catch(e){ /* 取れなくても記録は続ける */ }
+}
+// 判定画面で「現在地→店」を見積もる
+async function estimateToStore(){
+  const name = $("sStore").value.trim();
+  const el = $("svcHint");
+  const key = normStore(name);
+  if(!key){ el.innerHTML = `<div class="note warn">店舗名を入れてください</div>`; return; }
+  const g = storeGeo[key];
+  if(!g){
+    const past = live().filter(e=> normStore(e.storeName)===key && n(e.toStoreMinutes)>0);
+    el.innerHTML = past.length
+      ? `<div class="note info">この店の位置はまだ覚えていません。過去${past.length}回の実績では、店まで<b>平均${Math.round(past.reduce((a,e)=>a+n(e.toStoreMinutes),0)/past.length)}分</b>かかっています。</div>`
+      : `<div class="note info">この店の位置はまだ覚えていません。一度この店で「店に到着」を押すと、次から見積もれます。</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="note info"><span class="spin"></span>現在地を確認中…</div>`;
+  try{
+    const p = await getPos();
+    const straight = distKm(p, g);
+    const road = straight * (n(cfg.detour)||1.3);
+    const sp = ridingSpeed();
+    $("sToStore").value = r1(road);
+    calcScan(); saveState();
+    el.innerHTML = `<div class="note good">現在地から<b>${esc(g.name||name)}</b>まで、推定<b>${r1(road)}km</b>（約${Math.max(1,Math.round(road/sp.v*60))}分）
+      <br><span class="label">直線${r1(straight)}km × 補正${n(cfg.detour)||1.3}／この店は${g.n}回ぶんの記録から</span></div>`;
+    sndEnd();
+  }catch(e){
+    el.innerHTML = `<div class="note warn">${esc(e.message)}</div>`;
+  }
+}
+
 function startFromScan(fromSignal){
   const fee = n($("sFee").value);
   if(fee<=0){ toast("報酬を入れてください"); return; }
@@ -1640,6 +1733,7 @@ function startFromScan(fromSignal){
     dropBuilding: cleanBuilding($("sBldName").value),
     service: $("sSvc").value,
     feeYen: fee,
+    toStoreKm: n($("sToStore").value),
     distanceKm: n($("sDist").value),
     returnDistanceKm: n($("sRet").value),
     expWaitMin: n($("sWait").value),
@@ -1955,6 +2049,11 @@ function qStart(type){
   }
   qk.cur = {type, start: Date.now()};
   qk.lastMin = 0;
+  // 店に着いたら、その位置を店の場所として覚える
+  if(type === "P"){
+    const nm = $("qkStore").value.trim() || (qk.plan ? qk.plan.storeName : "");
+    if(nm) rememberStore(nm);
+  }
   sndStart(); vibe(25); paintQuick(); saveState();
 }
 function qEnd(){
@@ -2006,6 +2105,7 @@ function qSaveBatch(){
       pickupWaitSeconds: Math.round(pickWaitMs/D/1000),
       handoffSeconds: Math.round((dl.end-dl.start)/1000),
       buildingType: P ? (guessBldType(P.dropBuilding)||null) : null,
+      toStoreMinutes: toStore ? Math.round((toStore.end-toStore.start)/60000) : null,
       note: notes.join(" ／ ")||null,
       completedAt: new Date(dl.end).toISOString(),
       batchSize: D,
@@ -3627,6 +3727,9 @@ function renderSettings(){
   $("cfgKmGo").value=cfg.kmGo; $("cfgKmCond").value=cfg.kmCond;
   $("cfgWait").value=cfg.waitWarnMin; $("cfgMin").value=cfg.minSamples;
   $("cfgAiKey").value=cfg.aiKey||""; $("cfgAiModel").value=cfg.aiModel||CFG_DEF.aiModel;
+  $("cfgDetour").value = cfg.detour||1.3;
+  const gc = Object.keys(storeGeo).length;
+  $("geoCount").textContent = gc ? `${gc}軒の店の位置を覚えています` : "まだ覚えている店はありません";
   const sp = ridingSpeed();
   $("cfgSpeed").value = r1(sp.v);
   $("speedNote").textContent = sp.auto
@@ -3638,6 +3741,20 @@ function renderSettings(){
 $("tglDay").onclick = ()=>{ cfg.dayMode = !cfg.dayMode; saveCfg(); applyDisplay(); };
 $("tglBig").onclick = ()=>{ cfg.bigMode = !cfg.bigMode; saveCfg(); applyDisplay(); };
 $("tglSnd").onclick = ()=>{ cfg.sound = !cfg.sound; saveCfg(); applyDisplay(); if(cfg.sound) sndEnd(); };
+$("estBtn").onclick = estimateToStore;
+$("tglGps").onclick = async ()=>{
+  if(!cfg.useGps){
+    try{ await getPos(8000); }
+    catch(e){ toast(e.message); return; }      // 許可されなければオンにしない
+  }
+  cfg.useGps = !cfg.useGps; saveCfg(); applyDisplay();
+  toast(cfg.useGps ? "店の位置を覚えるようにしました" : "位置情報をオフにしました");
+};
+$("detSave").onclick = ()=>{
+  const v = n($("cfgDetour").value);
+  cfg.detour = (v>=1 && v<=2.5) ? v : 1.3;
+  saveCfg(); renderSettings(); toast("補正を保存しました");
+};
 $("tglChime").onclick = ()=>{ cfg.chime = !cfg.chime; saveCfg(); applyDisplay(); if(cfg.chime) sndMinute(1); };
 $("aiSave").onclick = ()=>{
   cfg.aiKey = $("cfgAiKey").value.trim();
@@ -3707,10 +3824,10 @@ $("impFile").onchange = ev=>{
 $("wipe").onclick = ()=>{
   if(!confirm("配達・クエスト・支出をすべて削除します。元に戻せません。")) return;
   if(!confirm("本当に削除しますか？")) return;
-  entries=[]; quests=[]; expenses=[]; summaries=[]; losses=[]; offers=[];
+  entries=[]; quests=[]; expenses=[]; summaries=[]; losses=[]; offers=[]; storeGeo={};
   qk = {legs:[], cur:null, saved:0};
   localStorage.removeItem(K_STATE);
-  saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss(); saveOffer(); renderSettings(); toast("削除しました");
+  saveEntries(); saveQuests(); saveExp(); saveSum(); saveLoss(); saveOffer(); saveGeo(); renderSettings(); toast("削除しました");
 };
 
 /* =========================================================
