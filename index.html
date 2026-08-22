@@ -297,6 +297,25 @@ body.big .note{font-size:15px}
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
 #quick{position:fixed}
 
+/* APIキーの取り方 */
+#keyGuide{
+  position:fixed;inset:0;z-index:92;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#keyGuide.on{display:flex}
+#kgTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+#kgTop h2{margin:0;font-size:18px;font-weight:800}
+#kgTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.kgStep{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.kgNo{
+  flex:none;width:34px;height:34px;border-radius:50%;background:var(--amber);color:#1A1204;
+  font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;
+}
+.kgTxt{flex:1;min-width:0}
+.kgTxt b{display:block;font-size:16px;margin-bottom:5px}
+.kgTxt span{font-size:14px;color:var(--muted);line-height:1.8}
+.kgTxt input{font-size:16px}
+
 /* 配達1件の詳細 */
 #detail{
   position:fixed;inset:0;z-index:87;background:var(--navy);display:none;flex-direction:column;
@@ -777,6 +796,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>お知らせ要約（Gemini APIキー）</h2>
+    <button class="btn primary sm" id="openKeyGuide" style="margin-bottom:12px">🔑 APIキーの取り方（手順を見る）</button>
     <label class="f"><span>APIキー</span><input id="cfgAiKey" type="password" placeholder="AIza… ではじまる文字列"></label>
     <label class="f"><span>モデル名</span><input id="cfgAiModel" list="modelList" placeholder="gemini-3.5-flash"></label>
     <datalist id="modelList"></datalist>
@@ -881,6 +901,65 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <button class="btn ghost" id="shotNext" style="margin-top:4px">📸 次のスクショを読む</button>
   <div id="shotLog" class="label" style="text-align:center;margin-top:10px"></div>
   <div style="height:20px"></div>
+</div>
+
+<!-- APIキーの取り方 -->
+<div id="keyGuide">
+  <div id="kgTop">
+    <h2>🔑 AI機能を使えるようにする</h2>
+    <button id="kgX">閉じる</button>
+  </div>
+  <div id="kgBody">
+    <div class="note info" style="margin-top:0">
+      Googleの「APIキー」という合言葉を1回だけ取れば、スクショ読み取りが使えます。
+      <b>無料です。支払い情報の登録は要りません。</b>所要5分ほど。
+    </div>
+
+    <div class="kgStep">
+      <div class="kgNo">1</div>
+      <div class="kgTxt">
+        <b>下のボタンでページを開く</b>
+        <span>Googleのログインを求められたら、普段のアカウントでログインしてください。</span>
+        <button class="btn primary sm" id="kgOpen" style="margin-top:8px">Googleのページを開く</button>
+      </div>
+    </div>
+
+    <div class="kgStep">
+      <div class="kgNo">2</div>
+      <div class="kgTxt">
+        <b>英語だったら日本語にする</b>
+        <span>Chrome：右上の「⋮」→「翻訳」<br>Safari：アドレスバー左の「ぁあ」→「日本語に翻訳」</span>
+      </div>
+    </div>
+
+    <div class="kgStep">
+      <div class="kgNo">3</div>
+      <div class="kgTxt">
+        <b>「APIキーを作成」を押す</b>
+        <span>英語なら <b>Create API key</b> という青いボタンです。<br>
+        規約の同意やプロジェクト選択が出たら、そのまま進めてOK。<br>
+        <b>AIza…</b> で始まる長い文字が出たらコピーします。</span>
+      </div>
+    </div>
+
+    <div class="kgStep">
+      <div class="kgNo">4</div>
+      <div class="kgTxt">
+        <b>ここに戻って貼り付ける</b>
+        <span>下の欄を長押し →「貼り付け」。うまくいかないときは「クリップボードから貼る」を押してください。</span>
+        <input id="kgKey" type="text" placeholder="AIza… をここに" style="margin-top:8px">
+        <button class="btn ghost sm" id="kgPaste" style="margin-top:8px">クリップボードから貼る</button>
+        <button class="btn primary sm" id="kgSave" style="margin-top:8px">保存して使えるようにする</button>
+        <div id="kgMsg"></div>
+      </div>
+    </div>
+
+    <div class="note info">
+      うまくいかないときは、貼った文字が <b>AIza</b> で始まっているか確認してください。
+      前後に余計な空白が入っていても、こちらで取り除きます。
+    </div>
+    <div style="height:20px"></div>
+  </div>
 </div>
 
 <!-- 配達1件の詳細 -->
@@ -3923,6 +4002,64 @@ $("aiTest").onclick = async ()=>{
       ${e.perDay?`<br><span class="label">別のモデルなら枠が残っている場合があります。「使えるモデルを調べる」から変えてみてください。</span>`:""}
       ${e.raw?`<br><span class="label" style="word-break:break-all;opacity:.7">${esc(String(e.raw).slice(0,140))}</span>`:""}</div>`;
     sndBad();
+  }
+};
+
+/* APIキーの取り方の案内。
+   外部サイトの説明を読ませずに、この画面の指示だけで終わるようにする。 */
+const KEY_URL = "https://aistudio.google.com/apikey";
+function openKeyGuide(){
+  $("kgKey").value = "";
+  $("kgMsg").innerHTML = "";
+  $("keyGuide").classList.add("on");
+}
+$("openKeyGuide").onclick = openKeyGuide;
+$("kgX").onclick = ()=> $("keyGuide").classList.remove("on");
+$("kgOpen").onclick = ()=> window.open(KEY_URL, "_blank", "noopener");
+
+// 貼り付けを1タップで
+$("kgPaste").onclick = async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    if(!t){ $("kgMsg").innerHTML = `<div class="note warn">クリップボードが空でした</div>`; return; }
+    $("kgKey").value = t.trim();
+    $("kgMsg").innerHTML = `<div class="note info">貼り付けました。「保存して使えるようにする」を押してください。</div>`;
+  }catch(e){
+    $("kgMsg").innerHTML = `<div class="note warn">自動で貼れませんでした。上の欄を長押しして「貼り付け」を選んでください。</div>`;
+  }
+};
+
+$("kgSave").onclick = async ()=>{
+  const k = ($("kgKey").value||"").trim().replace(/\s+/g,"");
+  const msg = $("kgMsg");
+  if(!k){ msg.innerHTML = `<div class="note warn">キーが入っていません</div>`; return; }
+  if(!/^AIza[\w\-]{20,}$/.test(k)){
+    msg.innerHTML = `<div class="note warn">キーの形が違うようです。<b>AIza</b>で始まる長い文字列を貼ってください。<br>
+      <span class="label">今入っているもの：${esc(k.slice(0,12))}…（${k.length}文字）</span></div>`;
+    return;
+  }
+  msg.innerHTML = `<div class="note info"><span class="spin"></span>確認しています…</div>`;
+  const before = cfg.aiKey;
+  cfg.aiKey = k;
+  try{
+    await callGemini([{text:"OKとだけ返してください"}], false);
+    saveCfg(); applyDisplay(); renderSettings();
+    sndSave(); vibe(50);
+    msg.innerHTML = `<div class="note good"><b>使えるようになりました。</b>
+      <br><span class="label">「📸 スクショを読ませる」のボタンが出ています。</span></div>`;
+    setTimeout(()=>{ $("keyGuide").classList.remove("on"); show("today"); }, 1600);
+  }catch(e){
+    if(e.perDay || e.rate){
+      // 制限に当たっただけならキーは有効なので、そのまま保存する
+      saveCfg(); applyDisplay(); renderSettings();
+      msg.innerHTML = `<div class="note info">キーは登録できました。ただ今は回数制限中です。<br>
+        <span class="label">${esc(e.message)}</span></div>`;
+    }else{
+      cfg.aiKey = before;
+      msg.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>
+        <br><span class="label">キーをコピーし直して、もう一度貼ってみてください。</span></div>`;
+      sndBad();
+    }
   }
 };
 
