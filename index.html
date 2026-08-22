@@ -243,6 +243,9 @@ body.big .note{font-size:15px}
 #qTop button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
 #qPlan{display:none;margin-top:10px;border:1px solid var(--qbg);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6}
 #qPlan.on{display:block}
+#qNote{display:none;margin-top:8px;border:1px solid var(--amber);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6;cursor:pointer}
+#qNote.on{display:block}
+#qNote b{color:var(--amber)}
 #qPlan b{color:var(--qbg)}
 #qStep{text-align:center;margin:14px 0 2px;font-size:12px;color:var(--muted);letter-spacing:.14em;font-weight:800}
 #qElapsed{text-align:center;font-size:62px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -296,6 +299,37 @@ body.big .note{font-size:15px}
 }
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
 #quick{position:fixed}
+
+/* 店舗メモ */
+#note{
+  position:fixed;inset:0;z-index:93;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#note.on{display:flex}
+#ntTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+#ntTop h2{margin:0;font-size:18px;font-weight:800}
+#ntTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.tags{display:flex;flex-wrap:wrap;gap:7px}
+.tg{
+  border:1px solid var(--line);background:transparent;color:var(--muted);
+  border-radius:20px;padding:10px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
+}
+.tg.on{background:var(--amber);border-color:var(--amber);color:#1A1204}
+.tg.warn.on{background:var(--red);border-color:var(--red);color:#fff}
+.tg.good.on{background:var(--green);border-color:var(--green);color:#04231A}
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.ph{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.ph img{width:100%;display:block;aspect-ratio:3/4;object-fit:cover}
+.ph button{
+  position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);color:#fff;border:none;
+  border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;font-family:inherit;
+}
+.noteChip{
+  display:inline-block;background:rgba(240,180,41,.16);color:var(--amber);
+  border-radius:6px;padding:3px 9px;font-size:12px;font-weight:800;margin:2px 4px 2px 0;
+}
+.noteChip.warn{background:rgba(232,80,91,.16);color:var(--red)}
+.noteChip.good{background:rgba(47,184,138,.16);color:var(--green)}
 
 /* 育ち具合 */
 #grow{
@@ -819,6 +853,12 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <button class="btn primary sm" id="detSave">補正を保存</button>
     <div class="label" id="geoCount" style="margin-top:10px"></div>
     <div id="geoList" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>店舗メモ</h2>
+    <div class="label" id="noteCount" style="margin-bottom:8px"></div>
+    <div id="noteList"></div>
     <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
   </div>
 
@@ -880,6 +920,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <button id="qClose">戻る</button>
   </div>
   <div id="qPlan"></div>
+  <div id="qNote"></div>
   <div id="qStep">ピック 0 ／ ドロップ 0</div>
   <div id="qElapsed" class="num">0:00</div>
   <div id="qHint">案件を受けたら押す</div>
@@ -892,6 +933,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="qMark"></div>
   <div id="qTools">
     <button id="qMemoBtn">📝 店名・報酬</button>
+    <button id="qNoteBtn">🗒 店メモ</button>
     <button id="qCashBtn">💴 釣銭</button>
     <button id="qStopBtn">⏹ 中止</button>
   </div>
@@ -928,6 +970,16 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="shotBody"></div>
   <button class="btn ghost" id="shotNext" style="margin-top:4px">📸 次のスクショを読む</button>
   <div id="shotLog" class="label" style="text-align:center;margin-top:10px"></div>
+  <div style="height:20px"></div>
+</div>
+
+<!-- 店舗メモ -->
+<div id="note">
+  <div id="ntTop">
+    <h2>📝 店舗メモ</h2>
+    <button id="ntX">閉じる</button>
+  </div>
+  <div id="ntBody"></div>
   <div style="height:20px"></div>
 </div>
 
@@ -1082,6 +1134,7 @@ const K_LOSS  = "delivery-ledger.losses.v1";    // キャンセル等で捨て�
 const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送った案件の記録
 const K_GEO   = "delivery-ledger.storegeo.v1";  // 店の位置（店に到着したときに覚える）
 const K_USAGE = "delivery-ledger.usage.v1";     // 今日のAI利用回数
+const K_NOTE  = "delivery-ledger.storenote.v1"; // 店舗メモ（文章とタグ。画像はIndexedDB）
 
 const SVC_NAME = {"uber-eats":"Uber Eats","demae-can":"出前館","rocket-now":"Rocket Now","other":"その他","all":"すべて"};
 const BLD_NAME = {house:"戸建て",apartment:"アパート",mansion:"マンション","housing-complex":"団地","tower-mansion":"タワマン","office-commercial":"オフィス・商業",other:"その他"};
@@ -1096,6 +1149,7 @@ const CFG_DEF = {
 
 let entries = [], quests = [], expenses = [], aiNotes = [], summaries = [], losses = [], offers = [], cfg = {...CFG_DEF};
 let storeGeo = {};   // 店名 → {lat,lng,n}
+let storeNote = {};  // 店名 → {tags:[], text:"", photos:[id], at}
 
 /* ---------- 保存・読み込み ---------- */
 function readArr(key){ try{ const v = JSON.parse(localStorage.getItem(key)||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
@@ -1108,6 +1162,7 @@ function load(){
   losses = readArr(K_LOSS);
   offers = readArr(K_OFFER);
   try{ storeGeo = JSON.parse(localStorage.getItem(K_GEO)||"{}") || {}; }catch(e){ storeGeo = {}; }
+  try{ storeNote = JSON.parse(localStorage.getItem(K_NOTE)||"{}") || {}; }catch(e){ storeNote = {}; }
   try{ cfg = {...CFG_DEF, ...(JSON.parse(localStorage.getItem(K_CFG)||"{}"))}; }catch(e){ cfg = {...CFG_DEF}; }
 }
 // ワンタップ記録で作った「金額未入力」のレコードは、埋まるまで平均や報酬の集計に入れない
@@ -1121,6 +1176,7 @@ const saveSum     = ()=> localStorage.setItem(K_SUM,   JSON.stringify(summaries)
 const saveLoss    = ()=> localStorage.setItem(K_LOSS,  JSON.stringify(losses));
 const saveOffer   = ()=> localStorage.setItem(K_OFFER, JSON.stringify(offers.slice(-3000)));
 const saveGeo     = ()=> localStorage.setItem(K_GEO,   JSON.stringify(storeGeo));
+const saveNote    = ()=> localStorage.setItem(K_NOTE,  JSON.stringify(storeNote));
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
@@ -1207,6 +1263,63 @@ function toast(msg){
   const t = $("toast"); t.textContent = msg; t.classList.add("on");
   clearTimeout(t._id); t._id = setTimeout(()=>t.classList.remove("on"), 2200);
 }
+/* =========================================================
+   写真の保管庫（IndexedDB）
+   localStorageは5MBしかないので、画像はこちらに置く。
+   店舗メモに貼ったマップのスクショなどを保存する。
+   ========================================================= */
+const IDB_NAME = "delivery-ledger-photos";
+let idb = null;
+function openIdb(){
+  if(idb) return Promise.resolve(idb);
+  return new Promise((res, rej)=>{
+    if(!window.indexedDB) return rej(new Error("この端末では写真を保存できません"));
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains("photos")) db.createObjectStore("photos", {keyPath:"id"});
+    };
+    req.onsuccess = ()=>{ idb = req.result; res(idb); };
+    req.onerror   = ()=> rej(new Error("写真の保管庫を開けませんでした"));
+  });
+}
+function idbPut(rec){
+  return openIdb().then(db => new Promise((res, rej)=>{
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").put(rec);
+    tx.oncomplete = ()=> res(rec.id);
+    tx.onerror    = ()=> rej(new Error("写真を保存できませんでした"));
+  }));
+}
+function idbGet(id){
+  return openIdb().then(db => new Promise((res, rej)=>{
+    const tx = db.transaction("photos", "readonly");
+    const r = tx.objectStore("photos").get(id);
+    r.onsuccess = ()=> res(r.result || null);
+    r.onerror   = ()=> rej(new Error("写真を読み出せませんでした"));
+  }));
+}
+function idbDel(id){
+  return openIdb().then(db => new Promise((res)=>{
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").delete(id);
+    tx.oncomplete = ()=> res(true);
+    tx.onerror    = ()=> res(false);
+  }));
+}
+// 使用量のめやす
+function idbSize(){
+  return openIdb().then(db => new Promise(res=>{
+    const tx = db.transaction("photos","readonly");
+    const r = tx.objectStore("photos").getAll();
+    r.onsuccess = ()=>{
+      const all = r.result || [];
+      res({n:all.length, bytes: all.reduce((a,x)=>a+((x.data||"").length*0.75), 0)});
+    };
+    r.onerror = ()=> res({n:0, bytes:0});
+  })).catch(()=>({n:0, bytes:0}));
+}
+
 function vibe(ms){ if(navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
 
 /* ---------- タップ音 ----------
@@ -1642,12 +1755,14 @@ function renderStoreInsight(){
   const area = $("sArea").value.trim();
   const bld = $("sBldName").value.trim();
   const areaHtml = (area ? areaInsightHtml(area) + areaFlowHtml(area) : "") + (bld ? buildInsightHtml(bld) : "");
+  const noteHtml = name ? noteChipsHtml(name) : "";
+  const noteBtn = name ? `<button class="btn ghost sm" id="siNote" style="margin-top:10px">📝 この店のメモを見る・書く</button>` : "";
   if(!name){ el.innerHTML = (areaHtml || `<div class="empty">店舗名・エリア・建物名のどれかを入れると過去の実績を照合します</div>`); return; }
   const st = storeStats(name);
-  if(!st){ el.innerHTML = `<div class="note info">この店舗の記録はまだありません。あと${need}件たまると平均が出ます。</div>` + areaHtml; return; }
+  if(!st){ el.innerHTML = `<div class="note info">この店舗の記録はまだありません。あと${need}件たまると平均が出ます。</div>` + noteHtml + areaHtml + noteBtn; bindNoteBtn(name); return; }
   if(st.count < need){
-    el.innerHTML = `<div class="note info">記録は<b>${st.count}件</b>だけです。判定に使うにはあと<b>${need-st.count}件</b>。件数が足りないので平均や警告は出しません。</div>` + areaHtml;
-    return;
+    el.innerHTML = `<div class="note info">記録は<b>${st.count}件</b>だけです。判定に使うにはあと<b>${need-st.count}件</b>。件数が足りないので平均や警告は出しません。</div>` + noteHtml + areaHtml + noteBtn;
+    bindNoteBtn(name); return;
   }
   let html = `<div class="grid3">
     <div class="stat"><div class="v num">${Math.round(st.avgScore)}</div><div class="u">平均スコア</div></div>
@@ -1669,7 +1784,12 @@ function renderStoreInsight(){
   if(wg && Math.abs(wg.avg)>=2){
     html += `<div class="note ${wg.avg>0?"warn":"good"}">この店の見込み：過去${wg.n}件で平均<b>${wg.avg>0?"+":""}${r1(wg.avg)}分</b>ズレています。${wg.avg>0?`店待ち想定を${Math.ceil(wg.avg)}分ほど足すと実態に合います。`:"想定を厳しく見積もりすぎです。"}</div>`;
   }
-  el.innerHTML = html + areaHtml;
+  el.innerHTML = html + noteHtml + areaHtml + noteBtn;
+  bindNoteBtn(name);
+}
+function bindNoteBtn(name){
+  const b = $("siNote");
+  if(b) b.onclick = ()=> openNote(name);
 }
 
 /* 判定した案件をそのまま計測へ渡す。
@@ -1855,6 +1975,31 @@ function openNav(g){
   window.open(url, "_blank", "noopener");
 }
 // 覚えている店の一覧（設定画面）
+// 設定に出す店舗メモの一覧
+async function renderNoteList(){
+  const el = $("noteList"); if(!el) return;
+  const keys = Object.keys(storeNote).filter(k=>{
+    const v = storeNote[k];
+    return (v.tags&&v.tags.length) || v.text || (v.photos&&v.photos.length);
+  });
+  const sz = await idbSize();
+  if($("noteCount")) $("noteCount").textContent =
+    `${keys.length}軒にメモあり ／ 写真${sz.n}枚（約${Math.round(sz.bytes/1024/1024*10)/10}MB）`;
+  if(!keys.length){ el.innerHTML = `<div class="empty">判定画面や計測画面からメモを書けます</div>`; return; }
+  el.innerHTML = keys.map(k=>{
+    const v = storeNote[k];
+    return `<div class="item">
+      <div class="m"><div class="nm">${esc(v.name||k)}</div>
+      <div class="sm">${(v.tags||[]).slice(0,3).map(esc).join(" / ")||"（タグなし）"}${v.photos&&v.photos.length?` ・写真${v.photos.length}枚`:""}</div></div>
+      <button class="btn ghost sm" data-note="${esc(k)}" style="width:auto;padding:9px 13px">開く</button>
+    </div>`;
+  }).join("");
+  el.querySelectorAll("[data-note]").forEach(b=> b.onclick = ()=>{
+    const v = storeNote[b.dataset.note];
+    openNote(v.name || b.dataset.note);
+  });
+}
+
 function renderGeoList(){
   const el = $("geoList"); if(!el) return;
   const list = Object.keys(storeGeo).map(k=>({key:k, ...storeGeo[k]}))
@@ -2232,10 +2377,18 @@ function qStart(type){
   }
   qk.cur = {type, start: Date.now()};
   qk.lastMin = 0;
-  // 店に着いたら、その位置を店の場所として覚える
+  // 店に着いたら位置を覚え、メモがあれば知らせる
   if(type === "P"){
     const nm = $("qkStore").value.trim() || (qk.plan ? qk.plan.storeName : "");
-    if(nm) rememberStore(nm);
+    if(nm){
+      rememberStore(nm);
+      const nt = getNote(nm);
+      if(nt.tags.length || nt.text){
+        $("qNote").innerHTML = `<b>${esc(nm)}のメモ</b>　${nt.tags.map(k=>esc(k)).join(" / ")}${nt.text?`<br>${esc(nt.text)}`:""}`;
+        $("qNote").classList.add("on");
+        $("qNote").onclick = ()=> openNote(nm);
+      }else $("qNote").classList.remove("on");
+    }
   }
   sndStart(); vibe(25); paintQuick(); saveState();
 }
@@ -2391,6 +2544,11 @@ function renderCash(){
 function openCash(){ $("cash").classList.add("on"); renderCash(); }
 $("goCash").onclick    = openCash;
 $("qCashBtn").onclick  = openCash;
+$("qNoteBtn").onclick  = ()=>{
+  const nm = $("qkStore").value.trim() || (qk.plan ? qk.plan.storeName : "");
+  if(!nm){ toast("先に店舗名を入れてください"); return; }
+  openNote(nm);
+};
 $("qStopBtn").onclick  = ()=>{
   if(!qBusy()){ toast("計測していません"); return; }
   $("qLoss").classList.add("on");
@@ -4168,6 +4326,141 @@ function growDetail(kind){
 }
 
 /* =========================================================
+   店舗メモ
+   走行中に文章は打てないので、よくあるものはタップで付けられるようにする。
+   マップのスクショや駐輪場所の写真も貼れる。
+   ========================================================= */
+const NOTE_TAGS = [
+  {k:"待ち長い",         c:"warn"},
+  {k:"待ち短い",         c:"good"},
+  {k:"駐輪わかりにくい", c:"warn"},
+  {k:"駐輪しやすい",     c:"good"},
+  {k:"店員が無愛想",     c:"warn"},
+  {k:"店員が親切",       c:"good"},
+  {k:"2階にある",        c:""},
+  {k:"入口が裏",         c:""},
+  {k:"番号呼び出し",     c:""},
+  {k:"名前で呼ばれる",   c:""},
+  {k:"商品が大きい",     c:"warn"},
+  {k:"汁物注意",         c:"warn"},
+  {k:"передача"        , c:""}
+].filter(t=> !/[а-яА-Я]/.test(t.k));
+
+let noteTarget = "";      // 今開いている店（正規化前の表示名）
+function getNote(name){
+  const k = normStore(name);
+  return storeNote[k] || {tags:[], text:"", photos:[]};
+}
+function openNote(name){
+  noteTarget = (name||"").trim();
+  if(!noteTarget){ toast("店舗名が必要です"); return; }
+  $("note").classList.add("on");
+  renderNote();
+}
+$("ntX").onclick = ()=> $("note").classList.remove("on");
+
+function renderNote(){
+  const nm = noteTarget, key = normStore(nm);
+  const nt = getNote(nm);
+  const st = storeStats(nm);
+  const geo = storeGeo[key];
+
+  $("ntBody").innerHTML = `
+  <div class="card">
+    <div style="font-size:19px;font-weight:800">${esc(nm)}</div>
+    ${st ? `<div class="label" style="margin-top:4px">過去${st.count}件 ／ 平均${Math.round(st.avgScore)}点${st.waitAllN>=cfg.minSamples?` ／ 店待ち平均${r1(st.waitAll)}分`:""}</div>` : `<div class="label" style="margin-top:4px">まだ配達記録はありません</div>`}
+    ${geo ? `<button class="btn ghost sm" id="ntNav" style="margin-top:10px">🧭 この店までナビ</button>` : ""}
+  </div>
+
+  <div class="card">
+    <h2>タグ（タップで付け外し）</h2>
+    <div class="tags">
+      ${NOTE_TAGS.map(t=>`<button class="tg ${t.c} ${nt.tags.includes(t.k)?"on":""}" data-tag="${esc(t.k)}">${esc(t.k)}</button>`).join("")}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>メモ</h2>
+    <textarea id="ntText" placeholder="バイクは建物の裏に停める／エレベーターが遅いので階段が早い　など">${esc(nt.text||"")}</textarea>
+    <button class="btn primary sm" id="ntSave" style="margin-top:8px">メモを保存</button>
+  </div>
+
+  <div class="card">
+    <h2>写真・スクショ</h2>
+    <input id="ntFile" type="file" accept="image/*" multiple style="display:none">
+    <button class="btn ghost sm" id="ntAdd">写真を追加</button>
+    <div class="label" style="margin-top:6px">マップのスクショ、駐輪場所、店の入口など</div>
+    <div class="photos" id="ntPhotos"></div>
+  </div>`;
+
+  // タグの付け外しはその場で保存
+  $("ntBody").querySelectorAll("[data-tag]").forEach(b=> b.onclick = ()=>{
+    const t = b.dataset.tag;
+    const cur = getNote(nm);
+    const tags = cur.tags.includes(t) ? cur.tags.filter(x=>x!==t) : [...cur.tags, t];
+    storeNote[key] = {...cur, tags, name:nm, at:new Date().toISOString()};
+    saveNote(); b.classList.toggle("on");
+    sndStart(); vibe(15);
+  });
+  $("ntSave").onclick = ()=>{
+    const cur = getNote(nm);
+    storeNote[key] = {...cur, text:$("ntText").value.trim(), name:nm, at:new Date().toISOString()};
+    saveNote(); sndSave(); vibe(40); toast("メモを保存しました");
+  };
+  if($("ntNav")) $("ntNav").onclick = ()=> openNav(geo);
+  $("ntAdd").onclick = ()=> $("ntFile").click();
+  $("ntFile").onchange = async ev=>{
+    const files = [...ev.target.files]; ev.target.value = "";
+    if(!files.length) return;
+    try{
+      for(const f of files.slice(0,6)){
+        const img = await shrinkImage(f, 1000, 0.7);   // 保存前に縮める
+        const id = "p"+Date.now()+Math.random().toString(36).slice(2,6);
+        await idbPut({id, data:img.b64, mime:img.mime, store:key, at:new Date().toISOString()});
+        const cur = getNote(nm);
+        storeNote[key] = {...cur, photos:[...(cur.photos||[]), id], name:nm, at:new Date().toISOString()};
+        saveNote();
+      }
+      sndSave(); vibe(40); toast("写真を保存しました");
+      renderPhotos();
+    }catch(e){ toast(e.message||"写真を保存できませんでした"); }
+  };
+  renderPhotos();
+}
+async function renderPhotos(){
+  const el = $("ntPhotos"); if(!el) return;
+  const nm = noteTarget, key = normStore(nm);
+  const ids = (getNote(nm).photos)||[];
+  if(!ids.length){ el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="label">読み込み中…</div>`;
+  const html = [];
+  for(const id of ids){
+    try{
+      const rec = await idbGet(id);
+      if(rec) html.push(`<div class="ph"><img src="data:${rec.mime};base64,${rec.data}" alt="">
+        <button data-del="${id}" aria-label="削除">✕</button></div>`);
+    }catch(e){}
+  }
+  el.innerHTML = html.join("") || `<div class="label">写真がありません</div>`;
+  el.querySelectorAll("[data-del]").forEach(b=> b.onclick = async ()=>{
+    if(!confirm("この写真を削除しますか？")) return;
+    await idbDel(b.dataset.del);
+    const cur = getNote(nm);
+    storeNote[key] = {...cur, photos:(cur.photos||[]).filter(x=>x!==b.dataset.del)};
+    saveNote(); renderPhotos(); toast("削除しました");
+  });
+}
+// 判定画面などに出す短い表示
+function noteChipsHtml(name){
+  const nt = getNote(name);
+  if(!nt.tags.length && !nt.text) return "";
+  const cls = k => (NOTE_TAGS.find(t=>t.k===k)||{}).c || "";
+  return `<div class="note info" style="margin-top:10px">
+    ${nt.tags.map(k=>`<span class="noteChip ${cls(k)}">${esc(k)}</span>`).join("")}
+    ${nt.text?`<div style="margin-top:6px">${esc(nt.text)}</div>`:""}</div>`;
+}
+
+/* =========================================================
    アプリの育ち具合
    どのサービスで走っていても、店に行って受け取って届けるのは同じ。
    記録が貯まるほど判定の材料が増えるので、その進み具合を見える形にする。
@@ -4376,6 +4669,7 @@ function renderSettings(){
   $("cfgDetour").value = cfg.detour||1.3;
   const u = getUsage();
   if($("aiUsage")) $("aiUsage").textContent = `今日のAI読み取り：${u.n}回（日本時間16時ごろにリセット）`;
+  renderNoteList();
   const gc = Object.keys(storeGeo).length;
   $("geoCount").textContent = gc ? `${gc}軒の店の位置を覚えています` : "まだ覚えている店はありません";
   renderGeoList();
