@@ -778,8 +778,12 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card">
     <h2>お知らせ要約（Gemini APIキー）</h2>
     <label class="f"><span>APIキー</span><input id="cfgAiKey" type="password" placeholder="AIza… ではじまる文字列"></label>
-    <label class="f"><span>モデル名</span><input id="cfgAiModel" placeholder="gemini-3.5-flash"></label>
-    <button class="btn primary sm" id="aiSave">キーを保存</button>
+    <label class="f"><span>モデル名</span><input id="cfgAiModel" list="modelList" placeholder="gemini-3.5-flash"></label>
+    <datalist id="modelList"></datalist>
+    <button class="btn primary sm" id="aiSave" style="margin-bottom:8px">キーを保存</button>
+    <button class="btn ghost sm" id="aiList" style="margin-bottom:8px">使えるモデルを調べる</button>
+    <button class="btn ghost sm" id="aiTest">接続テスト</button>
+    <div id="aiModels"></div>
     <div class="note info">ここは<b>使いたい人だけ</b>の項目です。空のままなら、AI関連のボタンは表示されません。他の機能はすべてキーなしで動きます。<br><br>キーを入れると「スクショから案件を即判定」と「お知らせの要約」が使えるようになります。キーはこの端末の中だけに保存され、Google以外へは送りません。要約するときはスクショ画像がGoogleへ送信されます。キーはGoogle AI Studio（aistudio.google.com/apikey）で無料で取れます。</div>
   </div>
 
@@ -3871,6 +3875,57 @@ function renderAi(){ renderAiHist(); }
 /* =========================================================
    設定・入出力
    ========================================================= */
+/* このキーで実際に使えるモデルを取り出す。
+   モデル名を推測で書かずに済むように、Googleに直接聞く。 */
+async function fetchModels(){
+  const key = (cfg.aiKey||"").trim();
+  if(!key) throw new Error("先にAPIキーを保存してください");
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+    {headers:{"x-goog-api-key":key}});
+  if(!res.ok) throw new Error(`一覧を取得できませんでした（${res.status}）`);
+  const d = await res.json();
+  return (d.models||[])
+    .filter(m => (m.supportedGenerationMethods||[]).includes("generateContent"))
+    .map(m => (m.name||"").replace(/^models\//,""))
+    .filter(nm => /gemini/i.test(nm) && !/embed|aqa|tts|image|audio|native/i.test(nm));
+}
+$("aiList").onclick = async ()=>{
+  const el = $("aiModels");
+  el.innerHTML = `<div class="note info"><span class="spin"></span>調べています…</div>`;
+  try{
+    const list = await fetchModels();
+    if(!list.length){ el.innerHTML = `<div class="note warn">使えるモデルが見つかりませんでした</div>`; return; }
+    // preview版より正式版を上に、軽いものを優先
+    const score = nm => (/preview|exp/i.test(nm)?100:0) + (/flash-lite/i.test(nm)?-2:0) + (/flash/i.test(nm)?-1:0) + (/pro/i.test(nm)?5:0);
+    list.sort((a,b)=> score(a)-score(b) || a.localeCompare(b));
+    $("modelList").innerHTML = list.map(x=>`<option value="${esc(x)}">`).join("");
+    el.innerHTML = `<div class="note info">タップで選べます。<b>preview</b>や<b>exp</b>が付くものは無料枠が少ない傾向です。</div>` +
+      list.slice(0,14).map(x=>`<button class="btn ghost sm" data-model="${esc(x)}" style="margin-bottom:6px">
+        ${esc(x)}${/preview|exp/i.test(x)?' <span class="label">（preview）</span>':''}</button>`).join("");
+    el.querySelectorAll("[data-model]").forEach(b=> b.onclick = ()=>{
+      $("cfgAiModel").value = b.dataset.model;
+      cfg.aiModel = b.dataset.model; saveCfg();
+      toast(`${b.dataset.model} に変更しました`);
+    });
+  }catch(e){ el.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span></div>`; }
+};
+$("aiTest").onclick = async ()=>{
+  const el = $("aiModels");
+  el.innerHTML = `<div class="note info"><span class="spin"></span>接続を確認しています…</div>`;
+  const t0 = Date.now();
+  try{
+    const txt = await callGemini([{text:"OKとだけ返してください"}], false);
+    el.innerHTML = `<div class="note good">つながりました（${((Date.now()-t0)/1000).toFixed(1)}秒）
+      <br><span class="label">モデル：${esc(cfg.aiModel||CFG_DEF.aiModel)} ／ 応答：${esc(txt.slice(0,30))}</span></div>`;
+    sndEnd();
+  }catch(e){
+    el.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>
+      ${e.perDay?`<br><span class="label">別のモデルなら枠が残っている場合があります。「使えるモデルを調べる」から変えてみてください。</span>`:""}
+      ${e.raw?`<br><span class="label" style="word-break:break-all;opacity:.7">${esc(String(e.raw).slice(0,140))}</span>`:""}</div>`;
+    sndBad();
+  }
+};
+
 function renderSettings(){
   if($("verTag")) $("verTag").textContent = APP_VER;
   $("cfgHrGo").value=cfg.hrGo; $("cfgHrCond").value=cfg.hrCond;
