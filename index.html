@@ -785,6 +785,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>データ</h2>
+    <div class="label" id="aiUsage" style="margin-bottom:10px"></div>
     <div class="label" style="margin-bottom:10px">配達 <b id="setCnt">0</b> 件／クエスト <b id="setQ">0</b> 件／支出 <b id="setE">0</b> 件／サマリー <b id="setS">0</b> 件（この端末の中だけ・送信なし）</div>
     <button class="btn ghost sm" id="expJson" style="margin-bottom:8px">JSONで書き出す</button>
     <button class="btn ghost sm" id="expCsv" style="margin-bottom:8px">CSVで書き出す</button>
@@ -959,6 +960,7 @@ const K_SUM   = "delivery-ledger.summaries.v1"; // 公式アプリの日次サ�
 const K_LOSS  = "delivery-ledger.losses.v1";    // キャンセル等で捨てた時間
 const K_OFFER = "delivery-ledger.offers.v1";    // 受けた／見送った案件の記録
 const K_GEO   = "delivery-ledger.storegeo.v1";  // 店の位置（店に到着したときに覚える）
+const K_USAGE = "delivery-ledger.usage.v1";     // 今日のAI利用回数
 
 const SVC_NAME = {"uber-eats":"Uber Eats","demae-can":"出前館","rocket-now":"Rocket Now","other":"その他","all":"すべて"};
 const BLD_NAME = {house:"戸建て",apartment:"アパート",mansion:"マンション","housing-complex":"団地","tower-mansion":"タワマン","office-commercial":"オフィス・商業",other:"その他"};
@@ -2985,6 +2987,7 @@ async function callGemini(parts, jsonMode){
   if(!key) throw new Error("設定画面でAPIキーを登録してください");
   const model = (cfg.aiModel||CFG_DEF.aiModel).trim();
   await waitForSlot(sec=>{ toast(`回数制限を避けるため${sec}秒待っています`); });
+  bumpUsage();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   // JSONで欲しいときは形式を指定し、途中で切れないよう上限も広げる
   const body = {contents:[{parts}]};
@@ -3009,8 +3012,24 @@ async function callGemini(parts, jsonMode){
     if(res.status===403) throw new Error("APIキーを確認してください（403）");
     if(res.status===400) throw new Error(`モデル名かキーを確認してください（400）${t.slice(0,80)}`);
     if(res.status===429){
-      const e = new Error("回数制限に達しました。1分ほど待ってから続けてください（429）");
-      e.rate = true; throw e;
+      // Googleの応答から、どの制限に当たったのかを取り出す
+      let detail = "", perDay = false;
+      try{
+        const j = JSON.parse(t);
+        const msg = (j.error && j.error.message) || "";
+        const vio = (j.error && j.error.details || [])
+          .flatMap(x=> x.violations || [])
+          .map(v=> v.quotaId || v.quotaMetric || "").join(" ");
+        detail = (vio + " " + msg);
+        perDay = /PerDay|per day|Daily/i.test(detail);
+      }catch(e2){ detail = t.slice(0,160); }
+      const e = new Error(perDay
+        ? "1日ぶんの上限に達しました。日本時間の16時ごろにリセットされます（429）"
+        : "1分あたりの上限です。少し待つと再開できます（429）");
+      e.rate = !perDay;          // 日単位なら自動で待っても無駄なので繰り返さない
+      e.perDay = perDay;
+      e.raw = detail;
+      throw e;
     }
     if(res.status>=500) throw new Error(`Google側が混み合っています。少し待って試してください（${res.status}）`);
     throw new Error(`エラー ${res.status}：${t.slice(0,120)}`);
@@ -3120,6 +3139,22 @@ const MAX_SHOT = 20;     // 一度に選べる枚数
 const CHUNK    = 4;      // 1回の送信にまとめる枚数
 const RPM_SAFE = 12;     // 1分あたりの送信回数の自主上限
 let apiCalls = [];       // 直近の送信時刻
+
+/* 今日どれだけAIを呼んだかを数える。
+   Googleの1日上限は太平洋時間の0時＝日本時間のだいたい16時にリセットされる。 */
+function usageKey(){
+  const d = new Date(Date.now() + 9*3600000 - 16*3600000);   // 16時始まりの1日として数える
+  return d.toISOString().slice(0,10);
+}
+function getUsage(){
+  try{ const u = JSON.parse(localStorage.getItem(K_USAGE)||"{}");
+       return (u.key===usageKey()) ? u : {key:usageKey(), n:0}; }
+  catch(e){ return {key:usageKey(), n:0}; }
+}
+function bumpUsage(){
+  const u = getUsage(); u.n++;
+  localStorage.setItem(K_USAGE, JSON.stringify(u));
+}
 
 async function waitForSlot(onWait){
   const now = Date.now();
@@ -3264,7 +3299,8 @@ $("shFile").onchange = async ev=>{
       let one;
       try{ one = await aiReadShot(groups[i]); }
       catch(err){
-        if(err.rate){ box.innerHTML = `<div class="card"><span class="spin"></span>回数制限にかかりました。60秒待って続けます…</div>`; await new Promise(res=>setTimeout(res,60000)); }
+        if(err.perDay) throw err;               // 1日の上限は待っても戻らない
+        if(err.rate){ box.innerHTML = `<div class="card"><span class="spin"></span>1分あたりの上限にかかりました。60秒待って続けます…</div>`; await new Promise(res=>setTimeout(res,60000)); }
         else await new Promise(res=>setTimeout(res,900));
         one = await aiReadShot(groups[i]);      // 1回だけやり直す
       }
@@ -3277,8 +3313,11 @@ $("shFile").onchange = async ev=>{
     $("shotLog").textContent = shotSession>1 ? `このパネルで${shotSession}枚を処理しました` : "";
     sndEnd(); vibe(40);
   }catch(e){
+    const u = getUsage();
     box.innerHTML = `<div class="note warn"><span class="red">${esc(e.message)}</span>
-      <br><span class="label">枚数を減らす／電波の良い場所で試す／明るいところで撮り直す、で通ることが多いです。</span>` +
+      ${e.perDay
+        ? `<br><span class="label">今日ここから送った回数：${u.n}回。待っても戻りません。Google AI Studio の「Rate limits」で残量を確認できます。</span>`
+        : `<br><span class="label">枚数を減らす／電波の良い場所で試す／明るいところで撮り直す、で通ることが多いです。</span>`}` +
       (e.raw?`<br><br><span class="label" style="word-break:break-all;opacity:.7">受け取った内容の先頭：<br>${esc(String(e.raw).slice(0,160))}…</span>`:"") +
       `</div>`;
     sndBad();
@@ -3839,6 +3878,8 @@ function renderSettings(){
   $("cfgWait").value=cfg.waitWarnMin; $("cfgMin").value=cfg.minSamples;
   $("cfgAiKey").value=cfg.aiKey||""; $("cfgAiModel").value=cfg.aiModel||CFG_DEF.aiModel;
   $("cfgDetour").value = cfg.detour||1.3;
+  const u = getUsage();
+  if($("aiUsage")) $("aiUsage").textContent = `今日のAI読み取り：${u.n}回（日本時間16時ごろにリセット）`;
   const gc = Object.keys(storeGeo).length;
   $("geoCount").textContent = gc ? `${gc}軒の店の位置を覚えています` : "まだ覚えている店はありません";
   renderGeoList();
