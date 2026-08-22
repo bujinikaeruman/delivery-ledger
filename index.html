@@ -514,7 +514,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <label class="f"><span>店まで（km）</span><input id="sToStore" type="number" inputmode="decimal" step="0.1" placeholder="1.2"></label>
       <label class="f"><span>店→お届け先（km）</span><input id="sDist" type="number" inputmode="decimal" step="0.1" placeholder="2.5"></label>
     </div>
-    <label class="f"><span>戻り距離（km）</span><input id="sRet" type="number" inputmode="decimal" step="0.1" placeholder="1.5"></label>
+    <label class="f"><span>戻り距離（km）※戻る場合だけ</span><input id="sRet" type="number" inputmode="decimal" step="0.1" placeholder="0"></label>
     <button class="btn ghost sm" id="estBtn" style="margin-bottom:10px">📍 現在地から店までを見積もる</button>
     <div id="svcHint"></div>
     <div class="row">
@@ -525,7 +525,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <label class="f"><span>店待ち想定（分）</span><input id="sWait" type="number" inputmode="numeric" placeholder="5"></label>
       <label class="f"><span>配達件数（相乗せ）</span><input id="sDropCount" type="number" inputmode="numeric" placeholder="1"></label>
     </div>
-    <div class="note info" style="margin-top:0">戻り距離を足すなら戻り時間も足す。片道だけで時給を出すと必ず高く出ます。<br>「店まで」の所要時間は平均速度から自動で足しています。</div>
+    <div class="note info" style="margin-top:0">配達後すぐ次を取るなら戻り距離は0のままでOKです。拠点に戻る場合だけ入れてください（そのときは戻り時間も入れる）。<br>「店まで」の所要時間は平均速度から自動で足しています。</div>
   </div>
 
   <div class="card">
@@ -770,6 +770,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <label class="f"><span>道のりの補正倍率（直線距離→実走行）</span><input id="cfgDetour" type="number" inputmode="decimal" step="0.05"></label>
     <button class="btn primary sm" id="detSave">補正を保存</button>
     <div class="label" id="geoCount" style="margin-top:10px"></div>
+    <div id="geoList" style="margin-top:8px"></div>
     <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
   </div>
 
@@ -1516,7 +1517,7 @@ function renderStoreInsight(){
   const el = $("storeInsight"), name = $("sStore").value.trim(), need = cfg.minSamples;
   const area = $("sArea").value.trim();
   const bld = $("sBldName").value.trim();
-  const areaHtml = (area ? areaInsightHtml(area) : "") + (bld ? buildInsightHtml(bld) : "");
+  const areaHtml = (area ? areaInsightHtml(area) + areaFlowHtml(area) : "") + (bld ? buildInsightHtml(bld) : "");
   if(!name){ el.innerHTML = (areaHtml || `<div class="empty">店舗名・エリア・建物名のどれかを入れると過去の実績を照合します</div>`); return; }
   const st = storeStats(name);
   if(!st){ el.innerHTML = `<div class="note info">この店舗の記録はまだありません。あと${need}件たまると平均が出ます。</div>` + areaHtml; return; }
@@ -1690,6 +1691,64 @@ async function rememberStore(name){
   }catch(e){ /* 取れなくても記録は続ける */ }
 }
 // 判定画面で「現在地→店」を見積もる
+async /* 配達後、次の案件が入るまでの空き時間をエリアごとに学習する。
+   戻り距離より、こちらのほうが実際の判断に近い。
+   「このエリアに行くと次がすぐ鳴るか」を過去の記録から出す。 */
+function areaFlow(){
+  const src = live().filter(e=> e.dropArea).sort((a,b)=> new Date(a.completedAt)-new Date(b.completedAt));
+  const byArea = {};
+  for(let i=0; i<src.length-1; i++){
+    const cur = src[i], nxt = src[i+1];
+    // 次の配達の開始時刻を、完了時刻から所要時間を引いて推定する
+    const nextStart = new Date(nxt.completedAt).getTime() - totalMinutes(nxt)*60000;
+    const gap = (nextStart - new Date(cur.completedAt).getTime())/60000;
+    if(gap < 0 || gap > 60) continue;              // 日をまたいだ／長時間の休憩は除く
+    const k = normArea(cur.dropArea);
+    (byArea[k] ||= {name:cur.dropArea, v:[]}).v.push(gap);
+  }
+  return byArea;
+}
+function areaFlowStats(name){
+  const k = normArea(name); if(!k) return null;
+  const a = areaFlow()[k];
+  if(!a || a.v.length < cfg.minSamples) return null;
+  const avg = a.v.reduce((x,y)=>x+y,0)/a.v.length;
+  return {n:a.v.length, avg, quick: a.v.filter(v=>v<=5).length};
+}
+function areaFlowHtml(name){
+  const f = areaFlowStats(name);
+  if(!f) return "";
+  const good = f.avg <= 8;
+  return `<div class="note ${good?"good":"warn"}" style="margin-top:10px">
+    このエリアは配達後、次が入るまで<b>平均${r1(f.avg)}分</b>（過去${f.n}回・うち${f.quick}回は5分以内）
+    ${good?"<br>鳴りやすいエリアです。" : "<br>間が空きがちなエリアです。単価が見合うか確認してください。"}</div>`;
+}
+
+/* 覚えている店へナビを開く（端末の地図アプリが起動する） */
+function openNav(g){
+  if(!g || !isFinite(g.lat) || !isFinite(g.lng)){ toast("位置を覚えていません"); return; }
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${g.lat},${g.lng}&travelmode=driving`;
+  window.open(url, "_blank", "noopener");
+}
+// 覚えている店の一覧（設定画面）
+function renderGeoList(){
+  const el = $("geoList"); if(!el) return;
+  const list = Object.keys(storeGeo).map(k=>({key:k, ...storeGeo[k]}))
+    .sort((a,b)=> b.n-a.n);
+  if(!list.length){ el.innerHTML = `<div class="empty">まだ覚えている店はありません</div>`; return; }
+  el.innerHTML = list.map(g=>`<div class="item">
+      <div class="m"><div class="nm">${esc(g.name||g.key)}</div>
+      <div class="sm">${g.n}回ぶんの記録から</div></div>
+      <button class="btn ghost sm" data-nav="${g.key}" style="width:auto;padding:9px 13px">🧭 ナビ</button>
+      <button class="del" data-geo="${g.key}" aria-label="削除">✕</button>
+    </div>`).join("");
+  el.querySelectorAll("[data-nav]").forEach(b=> b.onclick = ()=> openNav(storeGeo[b.dataset.nav]));
+  el.querySelectorAll("[data-geo]").forEach(b=> b.onclick = ()=>{
+    if(!confirm("この店の位置を忘れますか？")) return;
+    delete storeGeo[b.dataset.geo]; saveGeo(); renderGeoList(); renderSettings(); toast("削除しました");
+  });
+}
+
 async function estimateToStore(){
   const name = $("sStore").value.trim();
   const el = $("svcHint");
@@ -1697,10 +1756,8 @@ async function estimateToStore(){
   if(!key){ el.innerHTML = `<div class="note warn">店舗名を入れてください</div>`; return; }
   const g = storeGeo[key];
   if(!g){
-    const past = live().filter(e=> normStore(e.storeName)===key && n(e.toStoreMinutes)>0);
-    el.innerHTML = past.length
-      ? `<div class="note info">この店の位置はまだ覚えていません。過去${past.length}回の実績では、店まで<b>平均${Math.round(past.reduce((a,e)=>a+n(e.toStoreMinutes),0)/past.length)}分</b>かかっています。</div>`
-      : `<div class="note info">この店の位置はまだ覚えていません。一度この店で「店に到着」を押すと、次から見積もれます。</div>`;
+    // 過去の所要時間は、そのときの現在地しだいなので参考にならない。出さない。
+    el.innerHTML = `<div class="note info">この店の位置はまだ覚えていません。一度この店で「店に到着」を押すと、次から現在地からの距離を出せます。</div>`;
     return;
   }
   el.innerHTML = `<div class="note info"><span class="spin"></span>現在地を確認中…</div>`;
@@ -1712,7 +1769,9 @@ async function estimateToStore(){
     $("sToStore").value = r1(road);
     calcScan(); saveState();
     el.innerHTML = `<div class="note good">現在地から<b>${esc(g.name||name)}</b>まで、推定<b>${r1(road)}km</b>（約${Math.max(1,Math.round(road/sp.v*60))}分）
-      <br><span class="label">直線${r1(straight)}km × 補正${n(cfg.detour)||1.3}／この店は${g.n}回ぶんの記録から</span></div>`;
+      <br><span class="label">直線${r1(straight)}km × 補正${n(cfg.detour)||1.3}／この店は${g.n}回ぶんの記録から</span></div>
+      <button class="btn ghost sm" id="navBtn" style="margin-bottom:10px">🧭 この店までナビを開く</button>`;
+    $("navBtn").onclick = ()=> openNav(g);
     sndEnd();
   }catch(e){
     el.innerHTML = `<div class="note warn">${esc(e.message)}</div>`;
@@ -2800,12 +2859,13 @@ function renderAreaTable(){
     .map(x=>({name:x.name, a:agg(x.list), s:x.list.reduce((t,e)=>t+score(e).value,0)/x.list.length}))
     .sort((a,b)=> b.s-a.s);
   if(!rows.length){ el.innerHTML = `<div class="empty">同じエリアで${cfg.minSamples}件たまると出ます</div>`; return; }
-  el.innerHTML = `<table><tr><th>エリア</th><th>件</th><th>スコア</th><th>円/時</th><th>1件</th></tr>` +
+  el.innerHTML = `<table><tr><th>エリア</th><th>件</th><th>スコア</th><th>円/時</th><th>次まで</th></tr>` +
     rows.map(r=>{
       const cls = r.s>=75?"green":r.s>=50?"":"red";
-      return `<tr><td>${esc(r.name)}</td><td class="num">${r.a.n}</td><td class="num ${cls}">${Math.round(r.s)}</td><td class="num">${Math.round(r.a.hr).toLocaleString()}</td><td class="num">${yen(r.a.perJob)}</td></tr>`;
+      const f = areaFlowStats(r.name);
+      return `<tr><td>${esc(r.name)}</td><td class="num">${r.a.n}</td><td class="num ${cls}">${Math.round(r.s)}</td><td class="num">${Math.round(r.a.hr).toLocaleString()}</td><td class="num ${f&&f.avg>12?"red":(f&&f.avg<=8?"green":"")}">${f?r1(f.avg)+"分":"—"}</td></tr>`;
     }).join("") + `</table>
-    <div class="label" style="margin-top:8px">町名までの単位です。番地は記録していません。</div>`;
+    <div class="label" style="margin-top:8px">「次まで」は、そのエリアで配達した後、次の案件が入るまでの平均です。短いほど鳴りやすいエリアです。</div>`;
 }
 
 function renderBuildTable(){
@@ -3003,15 +3063,13 @@ function fillScanGaps(storeName, km){
   $("sWait").value = wait ? Math.round(wait) : "";
   if(wait) filled.push(`店待ち ${Math.round(wait)}分（${waitSrc}）`);
 
-  // 戻り距離：この店で過去に入れた値の平均
-  const past = live().filter(e=> normStore(e.storeName)===normStore(storeName||"") && n(e.returnDistanceKm)>0);
-  const ret = past.length ? past.reduce((a,e)=>a+n(e.returnDistanceKm),0)/past.length : 0;
-  $("sRet").value = ret ? r1(ret) : "";
-  if(ret) filled.push(`戻り ${r1(ret)}km（過去${past.length}件の平均）`);
+  // 戻り距離は入れない。
+  // 配達後はすぐ次の案件を取ることが多く、戻る前提の数字は実態に合わないため。
+  $("sRet").value = "";
+  $("sRetMin").value = "";
 
   // 所要時間：距離 ÷ 自分の平均速度
-  $("sDur").value    = km  ? Math.max(1, Math.round(km/sp.v*60)) : "";
-  $("sRetMin").value = ret ? Math.max(1, Math.round(ret/sp.v*60)) : "";
+  $("sDur").value = km ? Math.max(1, Math.round(km/sp.v*60)) : "";
   filled.push(`所要は平均速度${r1(sp.v)}km/時${sp.auto?`（実績${sp.n}件から算出）`:"（設定値）"}で換算`);
 
   calcScan();
@@ -3730,6 +3788,7 @@ function renderSettings(){
   $("cfgDetour").value = cfg.detour||1.3;
   const gc = Object.keys(storeGeo).length;
   $("geoCount").textContent = gc ? `${gc}軒の店の位置を覚えています` : "まだ覚えている店はありません";
+  renderGeoList();
   const sp = ridingSpeed();
   $("cfgSpeed").value = r1(sp.v);
   $("speedNote").textContent = sp.auto
