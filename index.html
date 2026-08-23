@@ -891,7 +891,9 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>店舗メモ</h2>
-    <button class="btn ghost sm" id="openShare" style="margin-bottom:10px">🤝 店舗データを仲間と共有する</button>
+    <button class="btn ghost sm" id="openShare" style="margin-bottom:8px">🤝 店舗データを仲間に送る</button>
+    <input id="swFile" type="file" accept=".json,application/json" style="display:none">
+    <button class="btn ghost sm" id="swLoad" style="margin-bottom:10px">📥 送られた店舗データを読み込む</button>
     <div class="label" id="noteCount" style="margin-bottom:8px"></div>
     <div id="noteList"></div>
     <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
@@ -4449,49 +4451,20 @@ function growDetail(kind){
 }
 
 /* =========================================================
-   店舗データの共有
-   リンクの中にデータを詰めて送る。受け取った側は開くだけで中身が見え、
-   どの店を取り込むか1軒ずつ選べる。自分の実績は上書きされない。
-   報酬や収入は一切含めない。
+   店舗データの共有（ファイル方式）
+   実際に走って分かったことだけを1つのファイルにまとめて渡す。
+   受け取った側は中身を見てから、1軒ずつ選んで取り込む。
+   自分の記録は上書きされず、足りない項目だけが埋まる。
+   報酬・売上・稼働日は一切含めない。
    ========================================================= */
-function b64urlEnc(bytes){
-  let s = "";
-  for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-}
-function b64urlDec(str){
-  const s = atob(str.replace(/-/g,"+").replace(/_/g,"/"));
-  const b = new Uint8Array(s.length);
-  for(let i=0;i<s.length;i++) b[i] = s.charCodeAt(i);
-  return b;
-}
-async function packShare(obj){
-  const json = JSON.stringify(obj);
-  const raw = new TextEncoder().encode(json);
-  if(window.CompressionStream){
-    try{
-      const cs = new CompressionStream("gzip");
-      const ab = await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();
-      return "g" + b64urlEnc(new Uint8Array(ab));
-    }catch(e){}
-  }
-  return "r" + b64urlEnc(raw);
-}
-async function unpackShare(str){
-  const kind = str[0], body = b64urlDec(str.slice(1));
-  if(kind === "g"){
-    const ds = new DecompressionStream("gzip");
-    const ab = await new Response(new Blob([body]).stream().pipeThrough(ds)).arrayBuffer();
-    return JSON.parse(new TextDecoder().decode(ab));
-  }
-  return JSON.parse(new TextDecoder().decode(body));
-}
 
-// 送る中身を組み立てる（報酬・件数あたりの金額は入れない）
+// 同じ店とみなす距離（メートル）
+const SAME_STORE_M = 100;
+
+/* 送る中身を組み立てる */
 function collectShareStores(){
-  const out = [];
-  const seen = new Set();
-  const add = (name)=>{
+  const out = [], seen = new Set();
+  const add = name=>{
     const k = normStore(name); if(!k || seen.has(k)) return;
     seen.add(k);
     const st = storeStats(name);
@@ -4516,11 +4489,107 @@ function collectShareStores(){
   return out;
 }
 
+/* 距離（メートル） */
+function metersBetween(a, b){
+  if(!a || !b || !isFinite(a.lat) || !isFinite(b.lat)) return Infinity;
+  return distKm(a, b) * 1000;
+}
+/* 店名の似ぐあい（0〜1）。表記ゆれを拾うために使う */
+function nameSimilar(a, b){
+  const x = normStore(a), y = normStore(b);
+  if(!x || !y) return 0;
+  if(x === y) return 1;
+  if(x.includes(y) || y.includes(x)) return 0.9;
+  const bi = t => { const s = new Set(); for(let i=0;i<t.length-1;i++) s.add(t.slice(i,i+2)); return s; };
+  const A = bi(x), B = bi(y);
+  if(!A.size || !B.size) return 0;
+  let hit = 0; A.forEach(v=>{ if(B.has(v)) hit++; });
+  return 2*hit / (A.size + B.size);
+}
+/* 届いた1軒が、自分のどの店にあたるかを判定する */
+function matchStore(inc){
+  const key = normStore(inc.n);
+  // ① 名前が完全に一致
+  if(storeNote[key] || storeGeo[key] || storeStats(inc.n)) return {key, how:"name", sure:true};
+  // ② 位置が近い
+  if(inc.la != null){
+    let best = null;
+    Object.keys(storeGeo).forEach(k=>{
+      const m = metersBetween({lat:inc.la, lng:inc.lo}, storeGeo[k]);
+      if(m <= SAME_STORE_M && (!best || m < best.m)) best = {key:k, m};
+    });
+    if(best) return {key:best.key, how:"geo", sure:true, meters:Math.round(best.m)};
+  }
+  // ③ 名前が似ている（確信は持てないので本人に聞く）
+  //    「杉玉三条店」と「杉玉 奈良三条通り店」のように、
+  //    頭の屋号が同じで地名の付け方が違うパターンを拾う
+  let cand = null;
+  const names = new Set([
+    ...live().map(e=>e.storeName),
+    ...Object.keys(storeNote).map(k=> storeNote[k].name || k),
+    ...Object.keys(storeGeo).map(k=> storeGeo[k].name || k)
+  ].filter(Boolean));
+  const head = (a,b)=>{ const x=normStore(a), y=normStore(b); let i=0; while(i<x.length && i<y.length && x[i]===y[i]) i++; return i; };
+  names.forEach(nm=>{
+    const sc = nameSimilar(inc.n, nm);
+    const hd = head(inc.n, nm);
+    const likely = (hd >= 2 && sc >= 0.3) || sc >= 0.6;
+    if(likely && (!cand || sc > cand.score)) cand = {key:normStore(nm), name:nm, score:sc};
+  });
+  if(cand) return {key:cand.key, name:cand.name, how:"similar", sure:false};
+  return null;
+}
+/* 取り込んだら何が増えるかを調べる */
+function shareDiff(inc){
+  const m = matchStore(inc);
+  if(!m) return {kind:"new", match:null};
+  if(!m.sure) return {kind:"ask", match:m};
+  const cur = storeNote[m.key] || {tags:[], text:""};
+  const gains = [];
+  const newTags = (inc.t||[]).filter(t=> !(cur.tags||[]).includes(t));
+  if(newTags.length) gains.push(`タグ${newTags.length}個`);
+  if(inc.m && inc.m !== cur.text && inc.m !== cur.sharedText) gains.push("メモ");
+  if(inc.la != null && !storeGeo[m.key]) gains.push("位置");
+  const mine = storeStats(inc.n);
+  const haveWait = mine && mine.waitAllN >= cfg.minSamples;
+  if(inc.w != null && !haveWait && cur.sharedWait !== inc.w) gains.push("店待ち時間");
+  return {kind: gains.length ? "add" : "same", match:m, gains, newTags};
+}
+/* 1軒を取り込む。自分の値は絶対に上書きしない */
+function applyShare(inc, forceKey){
+  const key = forceKey || (matchStore(inc)||{}).key || normStore(inc.n);
+  if(!key) return false;
+  const cur = storeNote[key] || {tags:[], text:"", photos:[]};
+  if(inc.la != null && inc.lo != null && !storeGeo[key]){
+    storeGeo[key] = {lat:inc.la, lng:inc.lo, n:1, name:cur.name || inc.n, shared:true};
+  }
+  const tags = [...new Set([...(cur.tags||[]), ...((inc.t)||[])])];
+  // 店名は自分の呼び方を残す（まとめたときに相手の表記へ変わらないように）
+  const myName = cur.name
+    || (live().find(e=> normStore(e.storeName)===key) || {}).storeName
+    || (storeGeo[key] && storeGeo[key].name)
+    || inc.n;
+  const note = {...cur, tags, name: myName, photos: cur.photos || [], at:new Date().toISOString()};
+  if(inc.m){
+    if(!cur.text) note.text = inc.m;                 // 自分のメモが無ければそのまま入れる
+    else if(inc.m !== cur.text){
+      const prev = cur.sharedText ? cur.sharedText.split("\n") : [];
+      if(!prev.includes(inc.m)) note.sharedText = [...prev, inc.m].join("\n");   // あれば別枠に足す
+    }
+  }
+  const mine = storeStats(inc.n);
+  if(inc.w != null && !(mine && mine.waitAllN >= cfg.minSamples)){
+    note.sharedWait = inc.w; note.sharedN = inc.c || 0;
+  }
+  storeNote[key] = note;
+  return true;
+}
+
 function openShare(){ $("share").classList.add("on"); renderShareOut(); }
 $("openShare").onclick = openShare;
 $("swX").onclick = ()=> $("share").classList.remove("on");
 
-// 送る側の画面
+/* 送る側 */
 function renderShareOut(){
   const list = collectShareStores();
   const el = $("swBody");
@@ -4529,135 +4598,164 @@ function renderShareOut(){
       配達を記録するか、店舗メモを書くと貯まります。</div>`;
     return;
   }
+  const withNote = list.filter(s=> s.t || s.m).length;
+  const withWait = list.filter(s=> s.w != null).length;
+  const withGeo  = list.filter(s=> s.la != null).length;
+
   el.innerHTML = `
   <div class="note info" style="margin-top:0">
     送るのは<b>店の情報だけ</b>です。報酬・売上・稼働日は含まれません。<br>
-    受け取った人は中身を見てから、1軒ずつ選んで取り込めます。
+    受け取った人は中身を見てから、1軒ずつ選んで取り込みます。
   </div>
   <div class="card">
-    <h2>送る内容（${list.length}軒）</h2>
-    ${list.slice(0,50).map(s=>`<div class="pick">
+    <h2>送る内容</h2>
+    <div class="grid3">
+      <div class="stat"><div class="v num">${list.length}</div><div class="u">軒</div></div>
+      <div class="stat"><div class="v num">${withWait}</div><div class="u">店待ちあり</div></div>
+      <div class="stat"><div class="v num">${withNote}</div><div class="u">メモあり</div></div>
+    </div>
+    <div class="label" style="margin-top:10px">位置つき ${withGeo}軒　／　写真は含まれません</div>
+  </div>
+  <div class="card">
+    <h2>入っている店</h2>
+    ${list.slice(0,40).map(s=>`<div class="pick">
       <div class="b"><div class="nm">${esc(s.n)}</div>
       <div class="sm">${[
-        s.w!=null?`店待ち平均${s.w}分`:"",
-        s.c?`${s.c}件の記録`:"",
-        s.la?"位置あり":"",
-        s.t?s.t.join(" / "):"",
-        s.m?"メモあり":""
+        s.w!=null?`店待ち${s.w}分`:"", s.c?`${s.c}件`:"", s.la?"位置":"",
+        s.t?s.t.join("/"):"", s.m?"メモ":""
       ].filter(Boolean).join(" ・ ")}</div></div>
     </div>`).join("")}
-    ${list.length>50?`<div class="label" style="margin-top:8px">ほか${list.length-50}軒</div>`:""}
+    ${list.length>40?`<div class="label" style="margin-top:8px">ほか${list.length-40}軒</div>`:""}
   </div>
-  <button class="btn primary" id="swSend">リンクを作って送る</button>
-  <div class="label" style="text-align:center;margin-top:8px">LINEなどにそのまま送れます</div>`;
+  <button class="btn primary" id="swSend">ファイルを作って送る</button>
+  <div class="label" style="text-align:center;margin-top:8px">LINEでそのまま送れます。件数の上限はありません</div>`;
 
-  $("swSend").onclick = async ()=>{
-    try{
-      // リンクには長さの限界があるので、収まる範囲まで自動で絞る
-      const sorted = [...list].sort((a,b)=> (b.c||0)-(a.c||0));
-      const build = async arr => APP_URL + "#store=" + await packShare({v:1, at:new Date().toISOString().slice(0,10), s:arr});
-      let send = sorted, url = await build(send);
-      if(url.length > 8500){
-        let lo = 1, hi = sorted.length;
-        while(lo < hi){
-          const mid = Math.ceil((lo+hi)/2);
-          const u = await build(sorted.slice(0, mid));
-          if(u.length <= 8500) lo = mid; else hi = mid-1;
-        }
-        send = sorted.slice(0, lo);
-        url = await build(send);
-        toast(`多いので、記録の多い${send.length}軒を送ります`);
-      }
-      const list2 = send;
-      const text =
-`フーデリ採算くん 店舗データ（${list2.length}軒）
-
-タップすると中身が見られます。
-取り込むかどうかは、見てから1軒ずつ選べます。
-
-${url}`;
-      if(navigator.share){
-        try{ await navigator.share({title:"店舗データ", text}); return; }
-        catch(e){ if(e && e.name==="AbortError") return; }
-      }
-      try{ await navigator.clipboard.writeText(text); toast("コピーしました。LINEに貼って送ってください"); }
-      catch(e){ prompt("この文をコピーして送ってください", text); }
-    }catch(e){ toast("リンクを作れませんでした"); }
+  $("swSend").onclick = ()=>{
+    const data = {app:"foodeli-saisan", type:"stores", v:1,
+      at:new Date().toISOString().slice(0,10), s:list};
+    const name = `店舗データ_${list.length}軒_${dayKey(new Date()).replace(/-/g,"")}.json`;
+    const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+    const file = (window.File) ? new File([blob], name, {type:"application/json"}) : null;
+    // 共有シートが使えるならファイルとして直接送る
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:"店舗データ",
+        text:`フーデリ採算くんの店舗データ（${list.length}軒）です。アプリの設定→店舗データ→「ファイルを読み込む」から取り込めます。`})
+        .catch(e=>{ if(!e || e.name!=="AbortError") downloadShare(blob, name); });
+    }else downloadShare(blob, name);
   };
 }
+function downloadShare(blob, name){
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = u; a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(u), 1500);
+  toast("ファイルを保存しました。LINEで送ってください");
+}
 
-// 受け取った側の画面
-async function openSharedLink(code){
-  $("share").classList.add("on");
-  const el = $("swBody");
-  el.innerHTML = `<div class="card"><span class="spin"></span>中身を確認しています…</div>`;
-  let data;
-  try{ data = await unpackShare(code); }
-  catch(e){ el.innerHTML = `<div class="note warn">このリンクは読み取れませんでした。<br>送り直してもらってください。</div>`; return; }
-  const list = (data && data.s) || [];
-  if(!list.length){ el.innerHTML = `<div class="note warn">中身が空でした。</div>`; return; }
+/* 受け取る側 */
+$("swLoad").onclick = ()=> $("swFile").click();
+$("swFile").onchange = ev=>{
+  const f = ev.target.files[0]; ev.target.value = "";
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    let d;
+    try{ d = JSON.parse(r.result); }
+    catch(e){ toast("このファイルは読めませんでした"); return; }
+    const list = (d && d.s) || (Array.isArray(d) ? d : null);
+    if(!list || !list.length){ toast("店舗データが入っていません"); return; }
+    renderShareIn(list, d.at);
+  };
+  r.readAsText(f);
+};
 
-  el.innerHTML = `
-  <div class="note info" style="margin-top:0">
-    <b>${list.length}軒ぶんの店舗データ</b>が届いています${data.at?`（${esc(data.at)}）`:""}。<br>
-    取り込むものを選んでください。<b>自分の記録は上書きされません。</b>
-  </div>
-  <div class="card">
-    <div class="row" style="margin-bottom:10px">
-      <button class="btn ghost sm" id="swAll">すべて選ぶ</button>
-      <button class="btn ghost sm" id="swNone">すべて外す</button>
-    </div>
-    ${list.map((s,i)=>{
-      const k = normStore(s.n);
-      const mine = storeStats(s.n);
-      const dup = mine && mine.count >= cfg.minSamples;
-      return `<div class="pick ${dup?"dup":""}">
-        <input type="checkbox" id="sw${i}" ${dup?"":"checked"}>
-        <label class="b" for="sw${i}">
-          <div class="nm">${esc(s.n)}${dup?`<span class="mineTag">自分の記録あり</span>`:""}</div>
+let shareIncoming = [];
+function renderShareIn(list, at){
+  shareIncoming = list;
+  const rows = list.map((s,i)=> ({s, i, d:shareDiff(s)}));
+  const grp = {
+    new:  rows.filter(r=> r.d.kind==="new"),
+    add:  rows.filter(r=> r.d.kind==="add"),
+    ask:  rows.filter(r=> r.d.kind==="ask"),
+    same: rows.filter(r=> r.d.kind==="same")
+  };
+  const line = (label, arr, color) =>
+    `<div class="brk"><span class="k">${label}</span><span class="v ${color||""}">${arr.length}軒</span></div>`;
+
+  const card = (title, arr, checked, note) => arr.length ? `
+    <div class="card">
+      <h2>${title}</h2>
+      ${note?`<div class="label" style="margin-bottom:8px">${note}</div>`:""}
+      ${arr.map(r=>`<div class="pick">
+        <input type="checkbox" id="sw${r.i}" ${checked?"checked":""}>
+        <label class="b" for="sw${r.i}">
+          <div class="nm">${esc(r.s.n)}</div>
           <div class="sm">${[
-            s.w!=null?`店待ち平均${s.w}分`:"",
-            s.c?`${s.c}件の記録から`:"",
-            s.la?"位置あり":"",
-            s.t?s.t.join(" / "):"",
-            s.m?esc(s.m):""
+            r.d.kind==="add" ? `＋${(r.d.gains||[]).join("・")}` : "",
+            r.s.w!=null?`店待ち${r.s.w}分`:"",
+            r.s.c?`${r.s.c}件から`:"",
+            r.s.t?r.s.t.join("/"):"",
+            r.s.m?esc(r.s.m):""
           ].filter(Boolean).join(" ・ ")}</div>
         </label>
-      </div>`;
-    }).join("")}
-  </div>
-  <button class="btn primary" id="swTake">選んだ店を取り込む</button>
-  <button class="btn ghost" id="swSkip" style="margin-top:10px">取り込まない</button>`;
+      </div>`).join("")}
+    </div>` : "";
 
-  const boxes = list.map((_,i)=> $("sw"+i));
-  $("swAll").onclick  = ()=> boxes.forEach(b=> b.checked = true);
-  $("swNone").onclick = ()=> boxes.forEach(b=> b.checked = false);
-  $("swSkip").onclick = ()=>{ clearShareHash(); $("share").classList.remove("on"); };
+  const askCard = grp.ask.length ? `
+    <div class="card">
+      <h2>同じ店か確認してください</h2>
+      <div class="label" style="margin-bottom:8px">名前が似ています。間違って1つにすると戻せないので、こちらで決めずに聞いています。</div>
+      ${grp.ask.map(r=>`<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <div class="nm" style="font-weight:800">${esc(r.s.n)}<span class="label"> ← 届いたデータ</span></div>
+        <div class="label" style="margin:4px 0 8px">あなたの「<b>${esc(r.d.match.name)}</b>」と同じ店ですか？</div>
+        <div class="row">
+          <button class="btn ghost sm" data-merge="${r.i}">同じ店にまとめる</button>
+          <button class="btn ghost sm" data-apart="${r.i}">別の店として追加</button>
+        </div>
+        <div class="label" id="askMsg${r.i}"></div>
+      </div>`).join("")}
+    </div>` : "";
+
+  $("swBody").innerHTML = `
+  <div class="note info" style="margin-top:0">
+    <b>${list.length}軒ぶん</b>のデータが届いています${at?`（${esc(at)}）`:""}。<br>
+    <b>自分の記録は上書きされません。</b>足りない項目だけが増えます。
+  </div>
+  <div class="card">
+    <h2>内訳</h2>
+    ${line("新しい店", grp.new, "green")}
+    ${line("情報が増える店", grp.add, "amber")}
+    ${line("変化なし", grp.same, "mut")}
+    ${line("確認が必要", grp.ask, grp.ask.length?"red":"mut")}
+  </div>
+  ${askCard}
+  ${card("新しい店", grp.new, true)}
+  ${card("情報が増える店", grp.add, true, "タグやメモが足されます。自分のメモは残ります")}
+  ${card("変化なし", grp.same, false, "取り込んでも変わらないので、外してあります")}
+  <button class="btn primary" id="swTake">選んだ店を取り込む</button>
+  <button class="btn ghost" id="swCancel" style="margin-top:10px">取り込まない</button>`;
+
+  // 似ている店の判断
+  grp.ask.forEach(r=>{
+    const done = (msg)=>{ $("askMsg"+r.i).textContent = msg; };
+    $("swBody").querySelector(`[data-merge="${r.i}"]`).onclick = ()=>{
+      applyShare(r.s, r.d.match.key); saveGeo(); saveNote();
+      done(`「${r.d.match.name}」にまとめました`); sndEnd();
+    };
+    $("swBody").querySelector(`[data-apart="${r.i}"]`).onclick = ()=>{
+      applyShare(r.s, normStore(r.s.n)); saveGeo(); saveNote();
+      done("別の店として追加しました"); sndEnd();
+    };
+  });
+
+  $("swCancel").onclick = ()=> $("share").classList.remove("on");
   $("swTake").onclick = ()=>{
     let cnt = 0;
-    list.forEach((s,i)=>{
-      if(!boxes[i].checked) return;
-      const k = normStore(s.n); if(!k) return;
-      // 位置：自分が覚えていなければもらう
-      if(s.la!=null && s.lo!=null && !storeGeo[k]){
-        storeGeo[k] = {lat:s.la, lng:s.lo, n:1, name:s.n, shared:true};
-      }
-      // メモ：タグは合わせ、文章は自分が書いていなければもらう
-      const cur = storeNote[k] || {tags:[], text:"", photos:[]};
-      const tags = [...new Set([...(cur.tags||[]), ...((s.t)||[])])];
-      const note = {
-        ...cur, tags, name: cur.name || s.n,
-        text: cur.text || s.m || "",
-        sharedWait: s.w,            // 仲間の店待ち平均。自分の実績とは別に持つ
-        sharedN: s.c || 0,
-        at: new Date().toISOString()
-      };
-      storeNote[k] = note;
-      cnt++;
+    [...grp.new, ...grp.add, ...grp.same].forEach(r=>{
+      const box = $("sw"+r.i);
+      if(box && box.checked && applyShare(r.s)) cnt++;
     });
-    saveGeo(); saveNote();
-    clearShareHash();
-    sndSave(); vibe(50);
+    saveGeo(); saveNote(); sndSave(); vibe(50);
     $("swBody").innerHTML = `<div class="card" style="text-align:center">
       <div style="font-size:30px;color:var(--green)">✓</div>
       <div style="font-weight:800;margin-top:6px">${cnt}軒を取り込みました</div>
@@ -4667,15 +4765,17 @@ async function openSharedLink(code){
     $("swDone").onclick = ()=>{ $("share").classList.remove("on"); renderSettings(); };
   };
 }
-function clearShareHash(){
-  try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){ location.hash = ""; }
-}
-// 仲間からもらった情報の表示
+
+/* 仲間からもらった情報の表示 */
 function sharedNoteHtml(name){
   const nt = storeNote[normStore(name)];
-  if(!nt || nt.sharedWait==null) return "";
+  if(!nt) return "";
+  const bits = [];
+  if(nt.sharedWait != null) bits.push(`店待ち平均<b>${nt.sharedWait}分</b>${nt.sharedN?`（${nt.sharedN}件から）`:""}`);
+  if(nt.sharedText) bits.push(esc(nt.sharedText).replace(/\n/g,"<br>"));
+  if(!bits.length) return "";
   return `<div class="note info" style="margin-top:10px">
-    仲間の記録：店待ち平均<b>${nt.sharedWait}分</b>${nt.sharedN?`（${nt.sharedN}件から）`:""}
+    <b>仲間のメモ</b><br>${bits.join("<br>")}
     <br><span class="label">自分の実測が貯まると、そちらが優先されます</span></div>`;
 }
 
@@ -5175,11 +5275,6 @@ if(!cfg.seenGuide) $("guide").classList.add("on");
 restoreState();
 renderToday();
 
-// 共有リンクで開かれたら、取り込み画面を出す
-(function(){
-  const m = (location.hash||"").match(/#store=(.+)$/);
-  if(m) setTimeout(()=> openSharedLink(m[1]), 300);
-})();
 
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
