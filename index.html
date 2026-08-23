@@ -1213,6 +1213,7 @@ function load(){
   offers = readArr(K_OFFER);
   try{ storeGeo = JSON.parse(localStorage.getItem(K_GEO)||"{}") || {}; }catch(e){ storeGeo = {}; }
   try{ storeNote = JSON.parse(localStorage.getItem(K_NOTE)||"{}") || {}; }catch(e){ storeNote = {}; }
+  rebuildAlias();
   try{ cfg = {...CFG_DEF, ...(JSON.parse(localStorage.getItem(K_CFG)||"{}"))}; }catch(e){ cfg = {...CFG_DEF}; }
 }
 // ワンタップ記録で作った「金額未入力」のレコードは、埋まるまで平均や報酬の集計に入れない
@@ -1226,7 +1227,7 @@ const saveSum     = ()=> localStorage.setItem(K_SUM,   JSON.stringify(summaries)
 const saveLoss    = ()=> localStorage.setItem(K_LOSS,  JSON.stringify(losses));
 const saveOffer   = ()=> localStorage.setItem(K_OFFER, JSON.stringify(offers.slice(-3000)));
 const saveGeo     = ()=> localStorage.setItem(K_GEO,   JSON.stringify(storeGeo));
-const saveNote    = ()=> localStorage.setItem(K_NOTE,  JSON.stringify(storeNote));
+const saveNote    = ()=>{ localStorage.setItem(K_NOTE, JSON.stringify(storeNote)); rebuildAlias(); };
 
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
@@ -1246,6 +1247,19 @@ function monthKey(d){
 }
 // 【訂正④】NFKC正規化＋空白除去＋小文字化
 const normStore = s => (s||"").normalize("NFKC").replace(/[\s　]+/g,"").toLowerCase();
+
+/* 同じ場所の別ブランド（ゴースト店）や表記ゆれを、1つの店にまとめて扱う。
+   例：ふくちゃんラーメン ＝ 男塾ラーメン（同じ厨房）
+   　　がっつり亭 ＝ ラーメンか！チャーハンか！尼ヶ辻店（同じ駐車場所）
+   ただし「ラーメンか！チャーハンか！富雄店」は場所が違うので別の店。 */
+let aliasMap = {};
+function rebuildAlias(){
+  aliasMap = {};
+  Object.keys(storeNote).forEach(k=>{
+    (storeNote[k].alias||[]).forEach(a=>{ if(a && a!==k) aliasMap[a] = k; });
+  });
+}
+const canonStore = s => { const k = normStore(s); return aliasMap[k] || k; };
 
 /* 配達先は「エリア名（町名まで）」だけを扱う。
    番地・建物名・部屋番号は、読み取り側でも指示しているが、
@@ -1727,8 +1741,8 @@ function setGauge(pre,val,goal,unit){
 }
 
 function storeStats(name){
-  const key = normStore(name); if(!key) return null;
-  const list = live().filter(e=> normStore(e.storeName)===key);
+  const key = canonStore(name); if(!key) return null;
+  const list = live().filter(e=> canonStore(e.storeName)===key);
   if(!list.length) return null;
   const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
   const waits = list.filter(e=>e.pickupWaitSeconds!=null).map(e=>e.pickupWaitSeconds/60);
@@ -1974,7 +1988,7 @@ function distKm(a, b){
 // 店に着いたときに位置を覚える（何度も来る店は平均していく）
 async function rememberStore(name){
   if(!cfg.useGps) return;
-  const key = normStore(name);
+  const key = canonStore(name);
   if(!key) return;
   try{
     const p = await getPos(6000);
@@ -2040,7 +2054,7 @@ function openNav(target){
 }
 /* 店名からナビ先を決める。覚えた位置があれば優先し、無ければ店名＋エリアで検索させる */
 function navTargetForStore(name, area){
-  const g = storeGeo[normStore(name)];
+  const g = storeGeo[canonStore(name)];
   if(g) return g;
   const q = [name, area].filter(Boolean).join(" ");
   return q ? {q} : null;
@@ -3088,8 +3102,8 @@ function gapList(list){
 }
 // 特定の店で、想定より何分ずれがちか
 function storeWaitGap(name){
-  const key = normStore(name); if(!key) return null;
-  const xs = gapList().filter(x=> normStore(x.e.storeName)===key && x.g.wait!=null);
+  const key = canonStore(name); if(!key) return null;
+  const xs = gapList().filter(x=> canonStore(x.e.storeName)===key && x.g.wait!=null);
   if(xs.length < cfg.minSamples) return null;
   return {n:xs.length, avg: xs.reduce((a,x)=>a+x.g.wait,0)/xs.length};
 }
@@ -3234,7 +3248,7 @@ function renderBy(elId, keyFn, order){
 }
 function renderStoreTable(){
   const el = $("anStore"), g = {};
-  live().forEach(e=>{ const k = normStore(e.storeName); if(!k) return; (g[k] ||= {name:e.storeName,list:[]}).list.push(e); });
+  live().forEach(e=>{ const k = canonStore(e.storeName); if(!k) return; (g[k] ||= {name:e.storeName,list:[]}).list.push(e); });
   const rows = Object.values(g).filter(x=>x.list.length>=cfg.minSamples)
     .map(x=>({name:x.name, a:agg(x.list), s:x.list.reduce((t,e)=>t+score(e).value,0)/x.list.length}))
     .sort((a,b)=>b.s-a.s);
@@ -4332,7 +4346,7 @@ function growDetail(kind){
     : `<div class="empty">まだありません</div>`;
 
   if(kind==="stores"){
-    const g = group(e=> normStore(e.storeName));
+    const g = group(e=> canonStore(e.storeName));
     const rows = Object.keys(g).map(k=>{
       const list = g[k], a = agg(list);
       const sc = list.reduce((x,e)=>x+score(e).value,0)/list.length;
@@ -4506,20 +4520,27 @@ function nameSimilar(a, b){
   let hit = 0; A.forEach(v=>{ if(B.has(v)) hit++; });
   return 2*hit / (A.size + B.size);
 }
-/* 届いた1軒が、自分のどの店にあたるかを判定する */
+/* 届いた1軒が、自分のどの店にあたるかを判定する
+   位置が分かるときは位置を最優先。名前より場所のほうが確実なので。 */
 function matchStore(inc){
-  const key = normStore(inc.n);
-  // ① 名前が完全に一致
-  if(storeNote[key] || storeGeo[key] || storeStats(inc.n)) return {key, how:"name", sure:true};
-  // ② 位置が近い
-  if(inc.la != null){
-    let best = null;
+  const key = canonStore(inc.n);
+
+  // ① 位置が近い＝同じ場所。名前が全く違っても同じ店とみなす（ゴースト店・同経営の別ブランド）
+  if(inc.la != null && inc.lo != null){
+    let best = null, far = null;
     Object.keys(storeGeo).forEach(k=>{
       const m = metersBetween({lat:inc.la, lng:inc.lo}, storeGeo[k]);
       if(m <= SAME_STORE_M && (!best || m < best.m)) best = {key:k, m};
+      if(k === key && (!far || m < far)) far = m;
     });
-    if(best) return {key:best.key, how:"geo", sure:true, meters:Math.round(best.m)};
+    if(best) return {key:best.key, how:"geo", sure:true, meters:Math.round(best.m),
+                     rename: normStore(inc.n) !== best.key};
+    // 同じ名前でも1km以上離れていれば、別の支店として扱う（学園前店と西大寺店など）
+    if(far != null && far > 1000) return null;
   }
+
+  // ② 名前が完全に一致
+  if(storeNote[key] || storeGeo[key] || storeStats(inc.n)) return {key, how:"name", sure:true};
   // ③ 名前が似ている（確信は持てないので本人に聞く）
   //    「杉玉三条店」と「杉玉 奈良三条通り店」のように、
   //    頭の屋号が同じで地名の付け方が違うパターンを拾う
@@ -4557,9 +4578,16 @@ function shareDiff(inc){
 }
 /* 1軒を取り込む。自分の値は絶対に上書きしない */
 function applyShare(inc, forceKey){
-  const key = forceKey || (matchStore(inc)||{}).key || normStore(inc.n);
+  const m = matchStore(inc);
+  const key = forceKey || (m||{}).key || normStore(inc.n);
   if(!key) return false;
   const cur = storeNote[key] || {tags:[], text:"", photos:[]};
+  // 別の呼び方でまとめた場合は、その名前も覚えておく（次に同じ名前で来ても1つの店として扱う）
+  const incKey = normStore(inc.n);
+  if(incKey && incKey !== key){
+    cur.alias = [...new Set([...(cur.alias||[]), incKey])];
+    cur.aliasNames = [...new Set([...(cur.aliasNames||[]), inc.n])];
+  }
   if(inc.la != null && inc.lo != null && !storeGeo[key]){
     storeGeo[key] = {lat:inc.la, lng:inc.lo, n:1, name:cur.name || inc.n, shared:true};
   }
@@ -4768,7 +4796,7 @@ function renderShareIn(list, at){
 
 /* 仲間からもらった情報の表示 */
 function sharedNoteHtml(name){
-  const nt = storeNote[normStore(name)];
+  const nt = storeNote[canonStore(name)];
   if(!nt) return "";
   const bits = [];
   if(nt.sharedWait != null) bits.push(`店待ち平均<b>${nt.sharedWait}分</b>${nt.sharedN?`（${nt.sharedN}件から）`:""}`);
@@ -4802,7 +4830,7 @@ const NOTE_TAGS = [
 
 let noteTarget = "";      // 今開いている店（正規化前の表示名）
 function getNote(name){
-  const k = normStore(name);
+  const k = canonStore(name);
   return storeNote[k] || {tags:[], text:"", photos:[]};
 }
 function openNote(name){
@@ -4814,7 +4842,7 @@ function openNote(name){
 $("ntX").onclick = ()=> $("note").classList.remove("on");
 
 function renderNote(){
-  const nm = noteTarget, key = normStore(nm);
+  const nm = noteTarget, key = canonStore(nm);
   const nt = getNote(nm);
   const st = storeStats(nm);
   const geo = storeGeo[key];
@@ -4823,6 +4851,10 @@ function renderNote(){
   <div class="card">
     <div style="font-size:19px;font-weight:800">${esc(nm)}</div>
     ${st ? `<div class="label" style="margin-top:4px">過去${st.count}件 ／ 平均${Math.round(st.avgScore)}点${st.waitAllN>=cfg.minSamples?` ／ 店待ち平均${r1(st.waitAll)}分`:""}</div>` : `<div class="label" style="margin-top:4px">まだ配達記録はありません</div>`}
+    ${(nt.aliasNames&&nt.aliasNames.length)?`<div class="note info" style="margin-top:10px">
+      同じ場所の別名：<b>${nt.aliasNames.map(esc).join("、")}</b>
+      <br><span class="label">この名前で案件が来ても、同じ店として扱います</span>
+      <button class="btn ghost sm" id="ntUnlink" style="margin-top:8px">別名を解除する</button></div>`:""}
     <button class="btn ghost sm" id="ntNav" style="margin-top:10px">🧭 この店までナビ${geo?"":"（店名で検索）"}</button>
   </div>
 
@@ -4862,6 +4894,12 @@ function renderNote(){
     saveNote(); sndSave(); vibe(40); toast("メモを保存しました");
   };
   if($("ntNav")) $("ntNav").onclick = ()=> openNav(geo || {q:nm});
+  if($("ntUnlink")) $("ntUnlink").onclick = ()=>{
+    if(!confirm("別名の紐づけを解除しますか？　以降は別の店として扱われます。")) return;
+    const cur = storeNote[key] || {};
+    delete cur.alias; delete cur.aliasNames;
+    storeNote[key] = cur; saveNote(); renderNote(); toast("解除しました");
+  };
   $("ntAdd").onclick = ()=> $("ntFile").click();
   $("ntFile").onchange = async ev=>{
     const files = [...ev.target.files]; ev.target.value = "";
@@ -4883,7 +4921,7 @@ function renderNote(){
 }
 async function renderPhotos(){
   const el = $("ntPhotos"); if(!el) return;
-  const nm = noteTarget, key = normStore(nm);
+  const nm = noteTarget, key = canonStore(nm);
   const ids = (getNote(nm).photos)||[];
   if(!ids.length){ el.innerHTML = ""; return; }
   el.innerHTML = `<div class="label">読み込み中…</div>`;
