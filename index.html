@@ -891,15 +891,11 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>店舗メモ</h2>
-    <button class="btn ghost sm" id="openShare" style="margin-bottom:8px">🤝 店舗データを仲間に送る</button>
+    <button class="btn primary sm" id="openShare" style="margin-bottom:8px">🤝 店舗データを送る・受け取る</button>
     <input id="swFile" type="file" accept=".json,application/json,*/*" style="display:none">
-    <button class="btn ghost sm" id="swLoad" style="margin-bottom:8px">📥 送られた店舗データを読み込む</button>
     <div class="note info" style="margin-bottom:10px">
-      <b>受け取り方</b><br>
-      ① LINEで届いたファイルをタップして端末に保存<br>
-      ② 上の「読み込む」を押す<br>
-      ③ ファイル選択画面で「ダウンロード」から選ぶ<br>
-      <span class="label">ファイル側の共有メニューにこのアプリは出ません。こちらから取りに行く形になります。</span>
+      LINEでコピペするだけでやり取りできます。<br>
+      <span class="label">量が多いときはファイルでも送れます。</span>
     </div>
     <div class="label" id="noteCount" style="margin-bottom:8px"></div>
     <div id="noteList"></div>
@@ -4511,6 +4507,39 @@ function handleShareTarget(){
 // 同じ店とみなす距離（メートル）
 const SAME_STORE_M = 100;
 
+/* データを文字列に詰める／戻す。gzipが使える端末では圧縮する */
+function b64urlEnc(bytes){
+  let t = "";
+  for(let i=0;i<bytes.length;i++) t += String.fromCharCode(bytes[i]);
+  return btoa(t).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function b64urlDec(str){
+  const t = atob(String(str).replace(/-/g,"+").replace(/_/g,"/"));
+  const b = new Uint8Array(t.length);
+  for(let i=0;i<t.length;i++) b[i] = t.charCodeAt(i);
+  return b;
+}
+async function packShare(obj){
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  if(window.CompressionStream){
+    try{
+      const cs = new CompressionStream("gzip");
+      const ab = await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();
+      return "g" + b64urlEnc(new Uint8Array(ab));
+    }catch(e){}
+  }
+  return "r" + b64urlEnc(raw);
+}
+async function unpackShare(str){
+  const kind = str[0], body = b64urlDec(str.slice(1));
+  if(kind === "g"){
+    const ds = new DecompressionStream("gzip");
+    const ab = await new Response(new Blob([body]).stream().pipeThrough(ds)).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(ab));
+  }
+  return JSON.parse(new TextDecoder().decode(body));
+}
+
 /* 送る中身を組み立てる */
 function collectShareStores(){
   const out = [], seen = new Set();
@@ -4650,9 +4679,24 @@ function applyShare(inc, forceKey){
   return true;
 }
 
-function openShare(){ $("share").classList.add("on"); renderShareOut(); }
+function openShare(){ $("share").classList.add("on"); renderShareHome(); }
 $("openShare").onclick = openShare;
 $("swX").onclick = ()=> $("share").classList.remove("on");
+
+/* 入口。送るか受け取るかを選ぶ */
+function renderShareHome(){
+  const list = collectShareStores();
+  $("swBody").innerHTML = `
+  <div class="card">
+    <div class="label">この端末にある店舗データ</div>
+    <div class="big green num" style="font-size:34px">${list.length}<span style="font-size:18px">軒</span></div>
+    <div class="label" style="margin-top:4px">報酬・売上は含まれません。店の情報だけです</div>
+  </div>
+  <button class="btn primary" id="shGoOut" style="margin-bottom:10px">📤 仲間に送る</button>
+  <button class="btn primary" id="shGoIn" style="margin-bottom:16px">📥 送られたデータを取り込む</button>`;
+  $("shGoOut").onclick = renderShareOut;
+  $("shGoIn").onclick  = renderShareInHome;
+}
 
 /* 送る側 */
 function renderShareOut(){
@@ -4660,7 +4704,9 @@ function renderShareOut(){
   const el = $("swBody");
   if(!list.length){
     el.innerHTML = `<div class="note info">まだ送れる店舗データがありません。<br>
-      配達を記録するか、店舗メモを書くと貯まります。</div>`;
+      配達を記録するか、店舗メモを書くと貯まります。</div>
+      <button class="btn ghost" id="shBack">戻る</button>`;
+    $("shBack").onclick = renderShareHome;
     return;
   }
   const withNote = list.filter(s=> s.t || s.m).length;
@@ -4668,10 +4714,6 @@ function renderShareOut(){
   const withGeo  = list.filter(s=> s.la != null).length;
 
   el.innerHTML = `
-  <div class="note info" style="margin-top:0">
-    送るのは<b>店の情報だけ</b>です。報酬・売上・稼働日は含まれません。<br>
-    受け取った人は中身を見てから、1軒ずつ選んで取り込みます。
-  </div>
   <div class="card">
     <h2>送る内容</h2>
     <div class="grid3">
@@ -4681,30 +4723,64 @@ function renderShareOut(){
     </div>
     <div class="label" style="margin-top:10px">位置つき ${withGeo}軒　／　写真は含まれません</div>
   </div>
-  <div class="card">
-    <h2>入っている店</h2>
-    ${list.slice(0,40).map(s=>`<div class="pick">
-      <div class="b"><div class="nm">${esc(s.n)}</div>
-      <div class="sm">${[
-        s.w!=null?`店待ち${s.w}分${s.wn?`(${s.wn}件)`:""}`:"", s.c?`${s.c}件`:"", s.la?"位置":"",
-        s.t?s.t.join("/"):"", s.m?"メモ":""
-      ].filter(Boolean).join(" ・ ")}</div></div>
-    </div>`).join("")}
-    ${list.length>40?`<div class="label" style="margin-top:8px">ほか${list.length-40}軒</div>`:""}
-  </div>
-  <button class="btn primary" id="swSend">ファイルを作って送る</button>
-  <div class="label" style="text-align:center;margin-top:8px">LINEでそのまま送れます。件数の上限はありません</div>`;
 
-  $("swSend").onclick = ()=>{
+  <div class="card">
+    <h2>かんたん（コピーして貼る）</h2>
+    <div class="label" style="margin-bottom:10px">
+      ① 下のボタンでコピー<br>
+      ② LINEのトークに貼り付けて送信<br>
+      <span style="opacity:.8">ファイルの保存も選択も要りません</span>
+    </div>
+    <button class="btn primary sm" id="shCopy">この内容をコピーする</button>
+    <div id="shCopyMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>量が多いとき（ファイル）</h2>
+    <div class="label" style="margin-bottom:10px">100軒を超えるときはこちら。相手はファイルを保存してから取り込みます。</div>
+    <button class="btn ghost sm" id="shFile2">ファイルを作って送る</button>
+  </div>
+
+  <button class="btn ghost" id="shBack">戻る</button>`;
+
+  $("shBack").onclick = renderShareHome;
+
+  $("shCopy").onclick = async ()=>{
+    const msg = $("shCopyMsg");
+    msg.innerHTML = `<div class="note info"><span class="spin"></span>作っています…</div>`;
+    try{
+      // 文字数に収まる範囲まで、記録の多い店から詰める
+      const sorted = [...list].sort((a,b)=> (b.c||0)-(a.c||0));
+      const wrap = arr => packShareText(arr);
+      let send = sorted, text = await wrap(send);
+      if(text.length > 9000){
+        let lo = 1, hi = sorted.length;
+        while(lo < hi){
+          const mid = Math.ceil((lo+hi)/2);
+          if((await wrap(sorted.slice(0,mid))).length <= 9000) lo = mid; else hi = mid-1;
+        }
+        send = sorted.slice(0, lo);
+        text = await wrap(send);
+      }
+      await navigator.clipboard.writeText(text);
+      sndSave(); vibe(40);
+      msg.innerHTML = `<div class="note good"><b>コピーしました（${send.length}軒）</b>
+        <br>LINEのトークを開いて、長押し →「貼り付け」で送ってください。
+        ${send.length < list.length ? `<br><span class="label">文字数の都合で、記録の多い${send.length}軒を選びました。全部送るならファイルを使ってください。</span>` : ""}</div>`;
+    }catch(e){
+      msg.innerHTML = `<div class="note warn">コピーできませんでした。ファイルの方をお試しください。</div>`;
+    }
+  };
+
+  $("shFile2").onclick = ()=>{
     const data = {app:"foodeli-saisan", type:"stores", v:1,
       at:new Date().toISOString().slice(0,10), s:list};
     const name = `店舗データ_${list.length}軒_${dayKey(new Date()).replace(/-/g,"")}.json`;
     const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
     const file = (window.File) ? new File([blob], name, {type:"application/json"}) : null;
-    // 共有シートが使えるならファイルとして直接送る
     if(file && navigator.canShare && navigator.canShare({files:[file]})){
       navigator.share({files:[file], title:"店舗データ",
-        text:`フーデリ採算くんの店舗データ（${list.length}軒）です。アプリの設定→店舗データ→「ファイルを読み込む」から取り込めます。`})
+        text:`フーデリ採算くんの店舗データ（${list.length}軒）です。`})
         .catch(e=>{ if(!e || e.name!=="AbortError") downloadShare(blob, name); });
     }else downloadShare(blob, name);
   };
@@ -4717,8 +4793,82 @@ function downloadShare(blob, name){
   toast("ファイルを保存しました。LINEで送ってください");
 }
 
+/* コピペ用の文字列。見出しを付けて、貼られたときに何か分かるようにする */
+async function packShareText(list){
+  const code = await packShare({v:1, at:new Date().toISOString().slice(0,10), s:list});
+  return `フーデリ採算くん 店舗データ（${list.length}軒）
+アプリの ⚙ →「店舗データを送る・受け取る」→「取り込む」で貼り付けてください。
+--------
+FDS1:${code}
+--------`;
+}
+function findShareCode(text){
+  const m = String(text||"").match(/FDS1:([A-Za-z0-9\-_]+)/);
+  return m ? m[1] : null;
+}
+
+/* 受け取る側の入口 */
+function renderShareInHome(){
+  $("swBody").innerHTML = `
+  <div class="card">
+    <h2>かんたん（貼り付ける）</h2>
+    <div class="label" style="margin-bottom:10px">
+      ① LINEの文字を長押し →「コピー」<br>
+      ② 下のボタンを押す
+    </div>
+    <button class="btn primary sm" id="shPaste" style="margin-bottom:8px">貼り付けて読み込む</button>
+    <textarea id="shPasteBox" placeholder="うまくいかないときは、ここに長押しで貼り付けてください"></textarea>
+    <button class="btn ghost sm" id="shPasteGo" style="margin-top:8px">この内容を読み込む</button>
+    <div id="shPasteMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>ファイルで届いたとき</h2>
+    <div class="label" style="margin-bottom:10px">
+      ① LINEのファイルをタップして保存<br>
+      ② 下のボタン →「ダウンロード」から選ぶ
+    </div>
+    <button class="btn ghost sm" id="shFileGo">ファイルを選ぶ</button>
+  </div>
+
+  <button class="btn ghost" id="shBack">戻る</button>`;
+
+  $("shBack").onclick = renderShareHome;
+  $("shFileGo").onclick = ()=> $("swFile").click();
+
+  const load = async (text)=>{
+    const msg = $("shPasteMsg");
+    const code = findShareCode(text);
+    if(!code){
+      msg.innerHTML = `<div class="note warn">店舗データが見つかりませんでした。<br>
+        <span class="label">「FDS1:」で始まる部分を含めて、メッセージ全体をコピーしてください。</span></div>`;
+      return;
+    }
+    msg.innerHTML = `<div class="note info"><span class="spin"></span>読み取っています…</div>`;
+    try{
+      const data = await unpackShare(code);
+      const arr = (data && data.s) || [];
+      if(!arr.length){ msg.innerHTML = `<div class="note warn">中身が空でした</div>`; return; }
+      renderShareIn(arr, data.at);
+    }catch(e){
+      msg.innerHTML = `<div class="note warn">読み取れませんでした。<br>
+        <span class="label">メッセージが途中で切れているかもしれません。送り直してもらってください。</span></div>`;
+    }
+  };
+  $("shPaste").onclick = async ()=>{
+    try{
+      const t = await navigator.clipboard.readText();
+      if(!t){ $("shPasteMsg").innerHTML = `<div class="note warn">クリップボードが空でした</div>`; return; }
+      load(t);
+    }catch(e){
+      $("shPasteMsg").innerHTML = `<div class="note info">自動で読めませんでした。下の枠に長押しで貼り付けてください。</div>`;
+    }
+  };
+  $("shPasteGo").onclick = ()=> load($("shPasteBox").value);
+}
+
 /* 受け取る側 */
-$("swLoad").onclick = ()=> $("swFile").click();
+
 $("swFile").onchange = ev=>{
   const f = ev.target.files[0]; ev.target.value = "";
   if(!f) return;
