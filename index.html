@@ -4471,6 +4471,35 @@ function growDetail(kind){
   }
 }
 
+/* 共有メニュー（他のアプリの「共有」）から渡された内容を受け取る。
+   Chromeでインストールした場合だけ動く。届いた文字から使えるものを拾う。 */
+function handleShareTarget(){
+  const q = new URLSearchParams(location.search);
+  if(!q.get("share")) return;
+  const text = [q.get("title"), q.get("text"), q.get("url")].filter(Boolean).join("\n").trim();
+  try{ history.replaceState(null, "", location.pathname); }catch(e){}
+  if(!text) return;
+
+  // 金額らしき数字があれば釣銭計算に回す
+  const yenMatch = text.replace(/,/g,"").match(/(\d{2,6})\s*円/);
+  setTimeout(()=>{
+    if(yenMatch){
+      $("cashAmt").value = yenMatch[1];
+      openCash(); renderCash();
+      toast("受け取った金額でお釣りを計算しました");
+      return;
+    }
+    // それ以外は店舗メモの下書きとして残す
+    $("share").classList.remove("on");
+    $("swBody").innerHTML = "";
+    const name = text.split("\n")[0].slice(0,40);
+    if(name){
+      openNote(name);
+      toast("受け取った内容から店舗メモを開きました");
+    }
+  }, 400);
+}
+
 /* =========================================================
    店舗データの共有（ファイル方式）
    実際に走って分かったことだけを1つのファイルにまとめて渡す。
@@ -5320,6 +5349,7 @@ if(!cfg.seenGuide) $("guide").classList.add("on");
 
 restoreState();
 renderToday();
+handleShareTarget();
 
 
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
