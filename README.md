@@ -5,6 +5,8 @@
 
 ## → https://bujinikaeruman.github.io/delivery-ledger/
 
+紹介ページ: https://bujinikaeruman.github.io/delivery-ledger/lp/
+
 ## できること
 
 - **ワンタップ記録** … 走行中はボタンを押すだけ。数字は入れません。相乗せ（PPDD・PDD・PPDDD）もそのまま記録できます

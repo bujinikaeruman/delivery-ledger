@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>フーデリ採算くん｜その案件、受けるか見送るか</title>
+<meta name="description" content="フードデリバリーの案件を受ける前に採算を判定。走行中はボタンを押すだけ。代引きのお釣り計算つき。登録不要・インストール不要・無料。">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="../icon-192.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="フーデリ採算くん｜その案件、受けるか見送るか">
+<meta property="og:description" content="受ける前に採算を判定。走行中はボタンを押すだけ。登録不要・無料。">
+<meta property="og:image" content="../icon-512.png">
+<style>
+:root{
+  --bg:#000000;
+  --panel:#14191F;
+  --line:#2E3742;
+  --ink:#F2F5F8;
+  --muted:#9AA7B4;
+  --amber:#F0B429;
+  --green:#2FB88A;
+  --red:#E8505B;
+  --blue:#2E6FB7;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+  font-size:16px;line-height:1.85;
+  -webkit-text-size-adjust:100%;
+}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+/* 計器のような小見出し */
+.eyebrow{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px;letter-spacing:.22em;color:var(--muted);
+  text-transform:uppercase;display:block;margin-bottom:10px;
+}
+.wrap{max-width:560px;margin:0 auto;padding:0 18px}
+section{padding:52px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:none}
+h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.02em}
+h1{font-size:clamp(30px,8.5vw,42px);line-height:1.25}
+h2{font-size:clamp(21px,5.5vw,26px);line-height:1.35;margin-bottom:14px}
+h3{font-size:17px;margin-bottom:4px}
+p{margin:0 0 14px}
+.lead{color:var(--muted);font-size:15px}
+
+/* ヘッダー */
+header{padding:26px 0 8px;text-align:center}
+header img{width:62px;height:62px;border-radius:16px;display:block;margin:0 auto 12px}
+header .nm{font-size:15px;font-weight:800;letter-spacing:.06em}
+
+/* ヒーロー */
+.hero{padding-top:26px}
+.hero h1 em{font-style:normal;color:var(--amber)}
+.hero .sub{color:var(--muted);font-size:15px;margin-top:14px}
+
+/* 動く判定：このページの主役 */
+.rig{
+  background:var(--panel);border:1px solid var(--line);border-radius:18px;
+  padding:18px;margin-top:26px;
+}
+.rig .cap{font-size:12px;color:var(--muted);text-align:center;margin-bottom:14px}
+.verdict{
+  border:2px solid var(--line);border-radius:14px;padding:20px 14px;text-align:center;
+  transition:border-color .25s,background .25s,color .25s;
+}
+.verdict .v{font-size:34px;font-weight:800;letter-spacing:.08em;line-height:1.15}
+.verdict .r{font-size:13px;margin-top:8px;opacity:.9}
+.v-go{border-color:var(--green);background:rgba(47,184,138,.12);color:var(--green)}
+.v-cond{border-color:var(--amber);background:rgba(240,180,41,.12);color:var(--amber)}
+.v-no{border-color:var(--red);background:rgba(232,80,91,.12);color:var(--red)}
+.v-idle{color:var(--muted)}
+.gauge{margin-top:14px}
+.gauge .top{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--muted);margin-bottom:5px}
+.gauge .top b{color:var(--ink);font-size:15px;font-weight:800}
+.bar{position:relative;height:8px;background:rgba(255,255,255,.09);border-radius:5px;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;transition:width .3s,background .3s}
+.bar u{position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.7}
+.fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:16px}
+.fields label{display:block}
+.fields span{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+.fields input{
+  width:100%;background:#0A0D11;border:1px solid var(--line);color:var(--ink);
+  border-radius:10px;padding:12px 10px;font-size:17px;font-family:inherit;
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+.fields input:focus{outline:2px solid var(--amber);outline-offset:1px;border-color:var(--amber)}
+.rig .note{font-size:12px;color:var(--muted);margin-top:12px;text-align:center}
+
+/* ボタン */
+.cta{
+  display:block;background:var(--amber);color:#1A1204;text-decoration:none;
+  border-radius:14px;padding:19px;text-align:center;font-size:18px;font-weight:800;
+  letter-spacing:.04em;margin-top:22px;
+}
+.cta:active{transform:scale(.99)}
+.cta.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);font-size:16px}
+.free{text-align:center;font-size:12px;color:var(--muted);margin-top:10px}
+
+/* 稼働の流れ */
+.flow{position:relative;padding-left:30px}
+.flow::before{
+  content:"";position:absolute;left:8px;top:6px;bottom:6px;width:2px;
+  background:linear-gradient(180deg,var(--amber),var(--green));opacity:.45;
+}
+.step{position:relative;padding-bottom:26px}
+.step:last-child{padding-bottom:0}
+.step::before{
+  content:"";position:absolute;left:-27px;top:7px;width:12px;height:12px;border-radius:50%;
+  background:var(--bg);border:2px solid var(--amber);
+}
+.step .when{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px;color:var(--amber);letter-spacing:.12em;
+}
+.step p{margin:4px 0 0;color:var(--muted);font-size:14.5px}
+
+/* 特徴 */
+.feat{border-top:1px solid var(--line);padding:18px 0}
+.feat:first-of-type{border-top:none;padding-top:0}
+.feat p{margin:2px 0 0;color:var(--muted);font-size:14.5px}
+.feat .k{font-size:19px;margin-right:8px;vertical-align:-1px}
+
+/* 育つ */
+.grow{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:16px}
+.grow .row{display:flex;gap:10px;align-items:baseline;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.grow .row:last-child{border-bottom:none}
+.grow .row .n{margin-left:auto;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;white-space:nowrap}
+.grow .row .l{color:var(--muted);font-size:13px}
+
+/* 釣銭の例 */
+.chg{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:16px}
+.chg table{width:100%;border-collapse:collapse;font-size:15px}
+.chg td{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);font-variant-numeric:tabular-nums}
+.chg tr:last-child td{border-bottom:none}
+.chg td:last-child{text-align:right;font-weight:800;color:var(--green)}
+
+/* 安心 */
+.safe li{margin-bottom:9px;color:var(--muted);font-size:14.5px}
+.safe b{color:var(--ink)}
+
+footer{padding:40px 0 46px;text-align:center;border-top:1px solid var(--line)}
+footer .disc{font-size:12px;color:var(--muted);line-height:1.9}
+footer .sig{margin-top:14px;font-size:14px;font-weight:800;letter-spacing:.08em}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <img src="../icon-192.png" alt="フーデリ採算くん">
+  <div class="nm">フーデリ採算くん</div>
+</header>
+
+<section class="hero">
+  <span class="eyebrow">Uber Eats / 出前館 / Rocket Now</span>
+  <h1>その案件、<br><em>受けるか、見送るか。</em></h1>
+  <p class="sub">報酬と距離を入れると、受ける目安を超えているか一目で分かります。
+  下の欄は本物です。直前に来た案件の数字を入れてみてください。</p>
+
+  <div class="rig">
+    <div class="cap">▼ ここで試せます</div>
+
+    <div class="verdict v-idle" id="vd">
+      <div class="v" id="vt">数字を入れる</div>
+      <div class="r" id="vr">報酬・距離・かかる時間</div>
+    </div>
+
+    <div class="gauge">
+      <div class="top"><span>実質時給</span><b class="num" id="g1">— 円/時</b></div>
+      <div class="bar"><i id="b1" style="width:0"></i><u></u></div>
+    </div>
+    <div class="gauge">
+      <div class="top"><span>距離効率</span><b class="num" id="g2">— 円/km</b></div>
+      <div class="bar"><i id="b2" style="width:0"></i><u></u></div>
+    </div>
+
+    <div class="fields">
+      <label><span>報酬（円）</span><input id="f1" type="number" inputmode="numeric" placeholder="750"></label>
+      <label><span>距離（km）</span><input id="f2" type="number" inputmode="decimal" step="0.1" placeholder="1.8"></label>
+      <label><span>時間（分）</span><input id="f3" type="number" inputmode="numeric" placeholder="23"></label>
+    </div>
+    <div class="note">白い線が「受ける目安」。この線はアプリ内で自分の基準に変えられます。</div>
+  </div>
+
+  <a class="cta" href="../index.html">アプリを開く</a>
+  <div class="free">登録なし・インストールなし・無料</div>
+</section>
+
+<section>
+  <span class="eyebrow">1日の流れ</span>
+  <h2>鳴ってから、締めるまで。</h2>
+  <div class="flow">
+    <div class="step">
+      <div class="when">案件が鳴る</div>
+      <h3>スクショを1枚</h3>
+      <p>案件画面を撮って読ませると、店名・報酬・距離・配達先を拾って判定します。数字を打つ必要はありません。</p>
+    </div>
+    <div class="step">
+      <div class="when">受けるか決める</div>
+      <h3>その店の実績が出る</h3>
+      <p>「この店は平均12分待つ」「このエリアは配達後4分で次が鳴る」。過去の自分の記録から出します。</p>
+    </div>
+    <div class="step">
+      <div class="when">走る</div>
+      <h3>ボタンを押すだけ</h3>
+      <p>店に到着、受取完了、配達先に到着、受渡完了。相乗せ（PPDD）もそのまま。1分ごとに経過を音で知らせます。</p>
+    </div>
+    <div class="step">
+      <div class="when">届ける</div>
+      <h3>代引きは即答</h3>
+      <p>商品代金を入れると、出されそうな金額とお釣りが一覧で出ます。硬貨の内訳つき。</p>
+    </div>
+    <div class="step">
+      <div class="when">1日の終わり</div>
+      <h3>入れ忘れを見つける</h3>
+      <p>公式の報酬画面を撮ると記録と突き合わせ、差額が出ます。オンライン時間から待機込みの本当の時給も分かります。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">走りながら使えること</span>
+  <h2>手が止まらない作りに。</h2>
+  <div class="feat">
+    <h3><span class="k">📸</span>スクショを投げるだけ</h3>
+    <p>案件・報酬明細・サマリー・ナビ・クエスト・レシート。種類はアプリが見分けて、それぞれの場所に記録します。20枚まとめてでも。</p>
+  </div>
+  <div class="feat">
+    <h3><span class="k">🔊</span>画面を見なくても分かる</h3>
+    <p>押した音が変わります。店待ちが長引くと警告音。どの画面にいても計測中のバーが出ます。</p>
+  </div>
+  <div class="feat">
+    <h3><span class="k">☀️</span>日中でも読める</h3>
+    <p>昼モードで白背景の高コントラストに。グローブ用の巨大ボタンも。</p>
+  </div>
+  <div class="feat">
+    <h3><span class="k">🔄</span>消えない</h3>
+    <p>Uberやマップに切り替えても、入力途中の内容と計測は残ります。アプリが落ちても続きから。</p>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">使うほど変わる</span>
+  <h2>自分専用に育ちます。</h2>
+  <p class="lead">全国共通のデータではなく、自分が走って貯めた記録から判定します。同じ店でも、人によって待たされる時間は違うので。</p>
+  <div class="grow">
+    <div class="row"><span>店ごとの店待ち時間</span><span class="n">2件で有効</span></div>
+    <div class="row"><span>エリアの鳴りやすさ<span class="l"><br>配達後、次が入るまでの平均</span></span><span class="n">2件で有効</span></div>
+    <div class="row"><span>建物ごとの受渡時間<span class="l"><br>タワマン・団地の所要</span></span><span class="n">2件で有効</span></div>
+    <div class="row"><span>自分の平均速度</span><span class="n">5件で有効</span></div>
+    <div class="row"><span>店の位置<span class="l"><br>現在地からの距離を見積もる</span></span><span class="n">1回で有効</span></div>
+    <div class="row"><span>見込みの答え合わせ<span class="l"><br>想定より何分ズレたか</span></span><span class="n">1件で有効</span></div>
+  </div>
+  <p class="lead" style="margin-top:14px">店ごとのメモも残せます。「駐輪は建物の裏」「エレベーターが遅い」。写真やマップのスクショも貼れます。</p>
+</section>
+
+<section>
+  <span class="eyebrow">代引き</span>
+  <h2>お釣りで止まらない。</h2>
+  <p class="lead">商品代金 1,562円のとき、こう出ます。</p>
+  <div class="chg">
+    <table>
+      <tr><td>1,600円</td><td>38円</td></tr>
+      <tr><td>2,000円</td><td>438円</td></tr>
+      <tr><td>2,062円</td><td>500円</td></tr>
+      <tr><td>2,562円</td><td>1,000円</td></tr>
+      <tr><td>5,062円</td><td>3,500円</td></tr>
+    </table>
+  </div>
+  <p class="lead" style="margin-top:14px">硬貨の内訳も出るので、財布から数えずに出せます。受け取った金額を打てば、その場でお釣りが出ます。</p>
+</section>
+
+<section class="safe">
+  <span class="eyebrow">データ</span>
+  <h2>記録はこの端末の中だけ。</h2>
+  <ul>
+    <li><b>ログイン不要。</b>アカウントを作る必要はありません。</li>
+    <li><b>送信しません。</b>配達記録も報酬も、外に出ることはありません。</li>
+    <li><b>広告なし・課金なし。</b></li>
+    <li>ブラウザのデータを消すと記録も消えます。設定から書き出してバックアップできます。</li>
+  </ul>
+  <a class="cta" href="../index.html">アプリを開く</a>
+  <a class="cta ghost" href="../index.html">ホーム画面に追加して使う</a>
+  <div class="free">開いたあと、ブラウザのメニューから「アプリをインストール」または「ホーム画面に追加」</div>
+</section>
+
+<footer>
+  <div class="disc">
+    このアプリは個人が作ったものです。判定・スコア・スクショから読み取った数値は、<br>
+    あくまで目安としてお使いください。<br>
+    正確な報酬や条件は、各配達アプリの公式画面でご確認ください。
+  </div>
+  <div class="sig">AI 無事カエルマン</div>
+</footer>
+
+</div>
+
+<script>
+"use strict";
+/* ヒーローの判定はアプリと同じ計算をそのまま動かしている（初期値の基準） */
+var GO_HR = 1500, COND_HR = 1100, GO_KM = 300, COND_KM = 220;
+var $ = function(id){ return document.getElementById(id); };
+var num = function(v){ var x = parseFloat(v); return isFinite(x) ? x : 0; };
+
+function paint(){
+  var fee = num($("f1").value), km = num($("f2").value), min = num($("f3").value);
+  var hr = min > 0 ? fee / min * 60 : 0;
+  var pk = km > 0 ? fee / km : 0;
+  var vd = $("vd");
+
+  if(fee <= 0 || (km <= 0 && min <= 0)){
+    vd.className = "verdict v-idle";
+    $("vt").textContent = "数字を入れる";
+    $("vr").textContent = "報酬・距離・かかる時間";
+    bar("g1", "b1", 0, GO_HR, "円/時");
+    bar("g2", "b2", 0, GO_KM, "円/km");
+    return;
+  }
+  var cls, txt;
+  if(hr >= GO_HR && pk >= GO_KM){ cls = "v-go"; txt = "受ける"; }
+  else if(hr >= COND_HR || pk >= COND_KM){ cls = "v-cond"; txt = "条件付き"; }
+  else { cls = "v-no"; txt = "見送る"; }
+
+  vd.className = "verdict " + cls;
+  $("vt").textContent = txt;
+  $("vr").textContent = Math.round(hr).toLocaleString() + "円/時　" + Math.round(pk) + "円/km";
+  bar("g1", "b1", hr, GO_HR, "円/時");
+  bar("g2", "b2", pk, GO_KM, "円/km");
+}
+function bar(labelId, fillId, val, goal, unit){
+  $(labelId).textContent = (val > 0 ? Math.round(val).toLocaleString() : "—") + " " + unit;
+  var f = $(fillId);
+  f.style.width = Math.min(100, val / (goal * 2) * 100) + "%";
+  f.style.background = val >= goal ? "var(--green)" : (val >= goal * 0.73 ? "var(--amber)" : "var(--red)");
+}
+["f1","f2","f3"].forEach(function(id){ $(id).addEventListener("input", paint); });
+paint();
+</script>
+</body>
+</html>

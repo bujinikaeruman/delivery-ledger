@@ -4680,7 +4680,7 @@ function renderGrow(){
 エリア ${g.areas}地区 ／ 建物 ${g.builds}件
 案件記録 ${g.offers}件（見送り${g.skipped}件）
 
-${APP_URL}`;
+${LP_URL}`;
     if(navigator.share){
       try{ await navigator.share({title:"フーデリ採算くん 育ち具合", text}); return; }
       catch(e){ if(e && e.name==="AbortError") return; }
@@ -4868,6 +4868,7 @@ $("wipe").onclick = ()=>{
    ========================================================= */
 const APP_VER = "v21";
 const APP_URL = "https://bujinikaeruman.github.io/delivery-ledger/";
+const LP_URL  = "https://bujinikaeruman.github.io/delivery-ledger/lp/";   // 紹介ページ
 async function shareApp(){
   const text =
 `フーデリ採算くん
@@ -4877,7 +4878,7 @@ async function shareApp(){
 走行中はボタンを押すだけ。代引きのお釣り計算もできます。
 
 登録もインストールも不要・無料
-${APP_URL}`;
+${LP_URL}`;
   if(navigator.share){
     try{ await navigator.share({title:"フーデリ採算くん", text, url:APP_URL}); return; }
     catch(e){ if(e && e.name==="AbortError") return; }   // 共有をやめただけなら何もしない
