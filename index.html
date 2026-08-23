@@ -892,8 +892,15 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card">
     <h2>店舗メモ</h2>
     <button class="btn ghost sm" id="openShare" style="margin-bottom:8px">🤝 店舗データを仲間に送る</button>
-    <input id="swFile" type="file" accept=".json,application/json" style="display:none">
-    <button class="btn ghost sm" id="swLoad" style="margin-bottom:10px">📥 送られた店舗データを読み込む</button>
+    <input id="swFile" type="file" accept=".json,application/json,*/*" style="display:none">
+    <button class="btn ghost sm" id="swLoad" style="margin-bottom:8px">📥 送られた店舗データを読み込む</button>
+    <div class="note info" style="margin-bottom:10px">
+      <b>受け取り方</b><br>
+      ① LINEで届いたファイルをタップして端末に保存<br>
+      ② 上の「読み込む」を押す<br>
+      ③ ファイル選択画面で「ダウンロード」から選ぶ<br>
+      <span class="label">ファイル側の共有メニューにこのアプリは出ません。こちらから取りに行く形になります。</span>
+    </div>
     <div class="label" id="noteCount" style="margin-bottom:8px"></div>
     <div id="noteList"></div>
     <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
@@ -4485,15 +4492,16 @@ function collectShareStores(){
     const nt = storeNote[k] || {};
     const geo = storeGeo[k];
     const hasNote = (nt.tags && nt.tags.length) || nt.text;
-    const hasStat = st && st.count >= cfg.minSamples;
-    if(!hasNote && !hasStat && !geo) return;
+    // 1件でも行った店は送る。件数は一緒に渡すので、受け取った側が重みを判断できる
+    if(!hasNote && !(st && st.count >= 1) && !geo) return;
     out.push({
       n: name,
       la: geo ? Math.round(geo.lat*1e5)/1e5 : undefined,
       lo: geo ? Math.round(geo.lng*1e5)/1e5 : undefined,
       t: (nt.tags && nt.tags.length) ? nt.tags : undefined,
       m: nt.text || undefined,
-      w: (st && st.waitAllN >= cfg.minSamples) ? Math.round(st.waitAll*10)/10 : undefined,
+      w: (st && st.waitAllN >= 1) ? Math.round(st.waitAll*10)/10 : undefined,
+      wn: (st && st.waitAllN >= 1) ? st.waitAllN : undefined,
       c: st ? st.count : 0
     });
   };
@@ -4607,7 +4615,7 @@ function applyShare(inc, forceKey){
   }
   const mine = storeStats(inc.n);
   if(inc.w != null && !(mine && mine.waitAllN >= cfg.minSamples)){
-    note.sharedWait = inc.w; note.sharedN = inc.c || 0;
+    note.sharedWait = inc.w; note.sharedN = inc.wn || inc.c || 0;
   }
   storeNote[key] = note;
   return true;
@@ -4649,7 +4657,7 @@ function renderShareOut(){
     ${list.slice(0,40).map(s=>`<div class="pick">
       <div class="b"><div class="nm">${esc(s.n)}</div>
       <div class="sm">${[
-        s.w!=null?`店待ち${s.w}分`:"", s.c?`${s.c}件`:"", s.la?"位置":"",
+        s.w!=null?`店待ち${s.w}分${s.wn?`(${s.wn}件)`:""}`:"", s.c?`${s.c}件`:"", s.la?"位置":"",
         s.t?s.t.join("/"):"", s.m?"メモ":""
       ].filter(Boolean).join(" ・ ")}</div></div>
     </div>`).join("")}
@@ -4720,8 +4728,8 @@ function renderShareIn(list, at){
           <div class="nm">${esc(r.s.n)}</div>
           <div class="sm">${[
             r.d.kind==="add" ? `＋${(r.d.gains||[]).join("・")}` : "",
-            r.s.w!=null?`店待ち${r.s.w}分`:"",
-            r.s.c?`${r.s.c}件から`:"",
+            r.s.w!=null?`店待ち${r.s.w}分${r.s.wn?`（${r.s.wn}件）`:""}`:"",
+            r.s.c?`${r.s.c}件`:"",
             r.s.t?r.s.t.join("/"):"",
             r.s.m?esc(r.s.m):""
           ].filter(Boolean).join(" ・ ")}</div>
