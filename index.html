@@ -4558,14 +4558,15 @@ function noteChipsHtml(name){
    どのサービスで走っていても、店に行って受け取って届けるのは同じ。
    記録が貯まるほど判定の材料が増えるので、その進み具合を見える形にする。
    ========================================================= */
+/* レベルの目安はほぼ配達件数。伝説は1万件。生半可では届かない設定にしている */
 const LEVELS = [
-  {p:0,    name:"見習い"},
-  {p:30,   name:"駆け出し"},
-  {p:80,   name:"常連"},
-  {p:180,  name:"熟練"},
-  {p:350,  name:"地元マスター"},
-  {p:700,  name:"エリア支配人"},
-  {p:1500, name:"伝説の配達員"}
+  {p:0,     name:"見習い"},
+  {p:50,    name:"駆け出し"},
+  {p:200,   name:"常連"},
+  {p:600,   name:"熟練"},
+  {p:1500,  name:"地元マスター"},
+  {p:4000,  name:"エリア支配人"},
+  {p:10000, name:"伝説の配達員"}
 ];
 function growStats(){
   const done = live();
@@ -4616,7 +4617,13 @@ function renderGrow(){
     </div>
     <div class="lvBar"><i style="width:${g.ratio}%"></i></div>
     <div class="label" style="text-align:center">
-      ${g.next ? `次は「${g.next.name}」まであと ${g.toNext} ポイント` : "最高レベルに到達しています"}
+      ${g.next
+        ? `次は「${g.next.name}」まであと <b>${g.toNext.toLocaleString()}</b>
+           <span style="opacity:.75">（配達${g.next.p.toLocaleString()}件ぶんが目安）</span>`
+        : "最高位です。1万件を超えました。"}
+    </div>
+    <div class="label" style="text-align:center;margin-top:6px;opacity:.7">
+      ポイントは配達件数が主。店・エリア・建物・案件の記録が少し加算されます
     </div>
   </div>
 
