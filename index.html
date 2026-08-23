@@ -568,7 +568,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <div id="tdRecent"><div class="empty">まだ記録がありません。<br>1件記録すると採算の分析がはじまります。</div></div>
   </div>
 
-  <button class="btn ghost" id="shareBtn" style="margin-bottom:12px">📤 このアプリを仲間に共有</button>
+  <button class="btn ghost" id="shareBtn" style="margin-bottom:12px">📤 仲間に送る</button>
 
   <div class="disc">
     このアプリは個人が作ったものです。判定・スコア・スクショから読み取った数値は、
@@ -894,8 +894,8 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <button class="btn primary sm" id="openShare" style="margin-bottom:8px">🤝 店舗データを送る・受け取る</button>
     <input id="swFile" type="file" accept=".json,application/json,*/*" style="display:none">
     <div class="note info" style="margin-bottom:10px">
-      LINEでコピペするだけでやり取りできます。<br>
-      <span class="label">量が多いときはファイルでも送れます。</span>
+      今日の画面の「📤 仲間に送る」からも開けます。<br>
+      <span class="label">LINEでコピペするだけでやり取りできます。</span>
     </div>
     <div class="label" id="noteCount" style="margin-bottom:8px"></div>
     <div id="noteList"></div>
@@ -928,7 +928,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>共有</h2>
-    <button class="btn ghost sm" id="shareBtn2">📤 このアプリを共有</button>
+    <button class="btn ghost sm" id="shareBtn2">📤 仲間に送る</button>
     <div class="note info">アプリのURLを送るだけで使えます。相手に登録もインストールも不要です。記録はそれぞれの端末に別々に保存されるので、こちらのデータが見られることはありません。</div>
   </div>
 
@@ -4683,17 +4683,29 @@ function openShare(){ $("share").classList.add("on"); renderShareHome(); }
 $("openShare").onclick = openShare;
 $("swX").onclick = ()=> $("share").classList.remove("on");
 
-/* 入口。送るか受け取るかを選ぶ */
+/* 入口。何を送るかを選ぶ */
 function renderShareHome(){
   const list = collectShareStores();
+  const g = growStats();
   $("swBody").innerHTML = `
   <div class="card">
-    <div class="label">この端末にある店舗データ</div>
-    <div class="big green num" style="font-size:34px">${list.length}<span style="font-size:18px">軒</span></div>
-    <div class="label" style="margin-top:4px">報酬・売上は含まれません。店の情報だけです</div>
+    <h2>送る</h2>
+    <button class="btn primary" id="shGoApp" style="margin-bottom:10px">📱 アプリを教える</button>
+    <div class="label" style="margin:-4px 0 14px">まだ使っていない仲間に、紹介ページを送ります</div>
+
+    <button class="btn primary" id="shGoLv" style="margin-bottom:10px">🌱 育ち具合を見せる</button>
+    <div class="label" style="margin:-4px 0 14px">レベル${g.level}「${esc(g.name)}」・配達${g.n}件・覚えた店${g.stores}軒</div>
+
+    <button class="btn primary" id="shGoOut" style="margin-bottom:10px">🤝 店舗データを渡す</button>
+    <div class="label" style="margin:-4px 0 0">${list.length}軒ぶん。店待ち時間・メモ・位置だけ。報酬は含みません</div>
   </div>
-  <button class="btn primary" id="shGoOut" style="margin-bottom:10px">📤 仲間に送る</button>
-  <button class="btn primary" id="shGoIn" style="margin-bottom:16px">📥 送られたデータを取り込む</button>`;
+
+  <div class="card">
+    <h2>受け取る</h2>
+    <button class="btn primary" id="shGoIn">📥 送られた店舗データを取り込む</button>
+  </div>`;
+  $("shGoApp").onclick = shareApp;
+  $("shGoLv").onclick  = shareGrow;
   $("shGoOut").onclick = renderShareOut;
   $("shGoIn").onclick  = renderShareInHome;
 }
@@ -5276,7 +5288,13 @@ function renderGrow(){
     try{ if($("grDetail").scrollIntoView) $("grDetail").scrollIntoView({behavior:"smooth", block:"nearest"}); }catch(e){}
   });
 
-  $("grShare").onclick = async ()=>{
+  $("grShare").onclick = shareGrow;
+}
+
+/* 育ち具合を文にして送る */
+async function shareGrow(){
+  const g = growStats();
+  {
     const text =
 `フーデリ採算くん 育ち具合
 レベル${g.level}「${g.name}」（${g.pts}pt）
@@ -5491,8 +5509,8 @@ ${LP_URL}`;
   try{ await navigator.clipboard.writeText(text); toast("共有用の文をコピーしました"); }
   catch(e){ prompt("この文をコピーして送ってください", text); }
 }
-$("shareBtn").onclick  = shareApp;
-$("shareBtn2").onclick = shareApp;
+$("shareBtn").onclick  = openShare;    // 今日タブ →「仲間に送る」
+$("shareBtn2").onclick = openShare;    // 設定 →「仲間に送る」
 
 /* =========================================================
    起動
