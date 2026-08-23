@@ -1151,6 +1151,9 @@ const K_GEO   = "delivery-ledger.storegeo.v1";  // 店の位置（店に到着�
 const K_USAGE = "delivery-ledger.usage.v1";     // 今日のAI利用回数
 const K_NOTE  = "delivery-ledger.storenote.v1"; // 店舗メモ（文章とタグ。画像はIndexedDB）
 
+const APP_URL = "https://bujinikaeruman.github.io/delivery-ledger/";
+const LP_URL  = "https://bujinikaeruman.github.io/delivery-ledger/lp/";   // 紹介ページ
+
 const SVC_NAME = {"uber-eats":"Uber Eats","demae-can":"出前館","rocket-now":"Rocket Now","other":"その他","all":"すべて"};
 const BLD_NAME = {house:"戸建て",apartment:"アパート",mansion:"マンション","housing-complex":"団地","tower-mansion":"タワマン","office-commercial":"オフィス・商業",other:"その他"};
 const LOSS_NAME = {cancel:"店都合キャンセル",noshow:"客が不在",wrong:"場所違い・道迷い",other:"その他のロス"};
@@ -4867,8 +4870,6 @@ $("wipe").onclick = ()=>{
    共有
    ========================================================= */
 const APP_VER = "v21";
-const APP_URL = "https://bujinikaeruman.github.io/delivery-ledger/";
-const LP_URL  = "https://bujinikaeruman.github.io/delivery-ledger/lp/";   // 紹介ページ
 async function shareApp(){
   const text =
 `フーデリ採算くん
