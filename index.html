@@ -300,6 +300,25 @@ body.big .note{font-size:15px}
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
 #quick{position:fixed}
 
+/* 店舗データの共有 */
+#share{
+  position:fixed;inset:0;z-index:94;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#share.on{display:flex}
+#swTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+#swTop h2{margin:0;font-size:18px;font-weight:800}
+#swTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
+.pick{display:flex;gap:11px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.pick:last-child{border-bottom:none}
+.pick input[type=checkbox]{width:24px;height:24px;flex:none;margin-top:2px;accent-color:var(--amber)}
+.pick .b{flex:1;min-width:0}
+.pick .b .nm{font-weight:800;font-size:15px}
+.pick .b .sm{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.7}
+.pick.dup{opacity:.6}
+body.day .pick{border-bottom-color:rgba(0,0,0,.1)}
+.mineTag{display:inline-block;background:rgba(159,179,200,.18);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:800;margin-left:6px}
+
 /* 店舗メモ */
 #note{
   position:fixed;inset:0;z-index:93;background:var(--navy);display:none;flex-direction:column;
@@ -872,6 +891,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
   <div class="card">
     <h2>店舗メモ</h2>
+    <button class="btn ghost sm" id="openShare" style="margin-bottom:10px">🤝 店舗データを仲間と共有する</button>
     <div class="label" id="noteCount" style="margin-bottom:8px"></div>
     <div id="noteList"></div>
     <div class="note info">オンにすると、ワンタップ記録で「店に到着」を押したときにその店の位置を覚えます。次に同じ店の案件が来たとき、<b>現在地からその店までの距離</b>を自動で見積もります。出前館のように「店までの距離」が案件画面に出ないときに効きます。<br><br>覚えるのは<b>店の位置だけ</b>で、この端末の中にしか保存しません。自分の移動履歴は残しません。</div>
@@ -985,6 +1005,16 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div id="shotBody"></div>
   <button class="btn ghost" id="shotNext" style="margin-top:4px">📸 次のスクショを読む</button>
   <div id="shotLog" class="label" style="text-align:center;margin-top:10px"></div>
+  <div style="height:20px"></div>
+</div>
+
+<!-- 店舗データの共有 -->
+<div id="share">
+  <div id="swTop">
+    <h2>🤝 店舗データ</h2>
+    <button id="swX">閉じる</button>
+  </div>
+  <div id="swBody"></div>
   <div style="height:20px"></div>
 </div>
 
@@ -1773,7 +1803,7 @@ function renderStoreInsight(){
   const area = $("sArea").value.trim();
   const bld = $("sBldName").value.trim();
   const areaHtml = (area ? areaInsightHtml(area) + areaFlowHtml(area) : "") + (bld ? buildInsightHtml(bld) : "");
-  const noteHtml = name ? noteChipsHtml(name) : "";
+  const noteHtml = name ? (noteChipsHtml(name) + sharedNoteHtml(name)) : "";
   const noteBtn = name
     ? `<button class="btn ghost sm" id="siNote" style="margin-top:10px">📝 この店のメモを見る・書く</button>` +
       `<button class="btn ghost sm" id="siNav" style="margin-top:8px">🧭 この店までナビ${storeGeo[normStore(name)]?"":"（店名で検索）"}</button>`
@@ -4419,6 +4449,237 @@ function growDetail(kind){
 }
 
 /* =========================================================
+   店舗データの共有
+   リンクの中にデータを詰めて送る。受け取った側は開くだけで中身が見え、
+   どの店を取り込むか1軒ずつ選べる。自分の実績は上書きされない。
+   報酬や収入は一切含めない。
+   ========================================================= */
+function b64urlEnc(bytes){
+  let s = "";
+  for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function b64urlDec(str){
+  const s = atob(str.replace(/-/g,"+").replace(/_/g,"/"));
+  const b = new Uint8Array(s.length);
+  for(let i=0;i<s.length;i++) b[i] = s.charCodeAt(i);
+  return b;
+}
+async function packShare(obj){
+  const json = JSON.stringify(obj);
+  const raw = new TextEncoder().encode(json);
+  if(window.CompressionStream){
+    try{
+      const cs = new CompressionStream("gzip");
+      const ab = await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();
+      return "g" + b64urlEnc(new Uint8Array(ab));
+    }catch(e){}
+  }
+  return "r" + b64urlEnc(raw);
+}
+async function unpackShare(str){
+  const kind = str[0], body = b64urlDec(str.slice(1));
+  if(kind === "g"){
+    const ds = new DecompressionStream("gzip");
+    const ab = await new Response(new Blob([body]).stream().pipeThrough(ds)).arrayBuffer();
+    return JSON.parse(new TextDecoder().decode(ab));
+  }
+  return JSON.parse(new TextDecoder().decode(body));
+}
+
+// 送る中身を組み立てる（報酬・件数あたりの金額は入れない）
+function collectShareStores(){
+  const out = [];
+  const seen = new Set();
+  const add = (name)=>{
+    const k = normStore(name); if(!k || seen.has(k)) return;
+    seen.add(k);
+    const st = storeStats(name);
+    const nt = storeNote[k] || {};
+    const geo = storeGeo[k];
+    const hasNote = (nt.tags && nt.tags.length) || nt.text;
+    const hasStat = st && st.count >= cfg.minSamples;
+    if(!hasNote && !hasStat && !geo) return;
+    out.push({
+      n: name,
+      la: geo ? Math.round(geo.lat*1e5)/1e5 : undefined,
+      lo: geo ? Math.round(geo.lng*1e5)/1e5 : undefined,
+      t: (nt.tags && nt.tags.length) ? nt.tags : undefined,
+      m: nt.text || undefined,
+      w: (st && st.waitAllN >= cfg.minSamples) ? Math.round(st.waitAll*10)/10 : undefined,
+      c: st ? st.count : 0
+    });
+  };
+  live().forEach(e=> add(e.storeName));
+  Object.keys(storeNote).forEach(k=> add(storeNote[k].name || k));
+  Object.keys(storeGeo).forEach(k=> add(storeGeo[k].name || k));
+  return out;
+}
+
+function openShare(){ $("share").classList.add("on"); renderShareOut(); }
+$("openShare").onclick = openShare;
+$("swX").onclick = ()=> $("share").classList.remove("on");
+
+// 送る側の画面
+function renderShareOut(){
+  const list = collectShareStores();
+  const el = $("swBody");
+  if(!list.length){
+    el.innerHTML = `<div class="note info">まだ送れる店舗データがありません。<br>
+      配達を記録するか、店舗メモを書くと貯まります。</div>`;
+    return;
+  }
+  el.innerHTML = `
+  <div class="note info" style="margin-top:0">
+    送るのは<b>店の情報だけ</b>です。報酬・売上・稼働日は含まれません。<br>
+    受け取った人は中身を見てから、1軒ずつ選んで取り込めます。
+  </div>
+  <div class="card">
+    <h2>送る内容（${list.length}軒）</h2>
+    ${list.slice(0,50).map(s=>`<div class="pick">
+      <div class="b"><div class="nm">${esc(s.n)}</div>
+      <div class="sm">${[
+        s.w!=null?`店待ち平均${s.w}分`:"",
+        s.c?`${s.c}件の記録`:"",
+        s.la?"位置あり":"",
+        s.t?s.t.join(" / "):"",
+        s.m?"メモあり":""
+      ].filter(Boolean).join(" ・ ")}</div></div>
+    </div>`).join("")}
+    ${list.length>50?`<div class="label" style="margin-top:8px">ほか${list.length-50}軒</div>`:""}
+  </div>
+  <button class="btn primary" id="swSend">リンクを作って送る</button>
+  <div class="label" style="text-align:center;margin-top:8px">LINEなどにそのまま送れます</div>`;
+
+  $("swSend").onclick = async ()=>{
+    try{
+      // リンクには長さの限界があるので、収まる範囲まで自動で絞る
+      const sorted = [...list].sort((a,b)=> (b.c||0)-(a.c||0));
+      const build = async arr => APP_URL + "#store=" + await packShare({v:1, at:new Date().toISOString().slice(0,10), s:arr});
+      let send = sorted, url = await build(send);
+      if(url.length > 8500){
+        let lo = 1, hi = sorted.length;
+        while(lo < hi){
+          const mid = Math.ceil((lo+hi)/2);
+          const u = await build(sorted.slice(0, mid));
+          if(u.length <= 8500) lo = mid; else hi = mid-1;
+        }
+        send = sorted.slice(0, lo);
+        url = await build(send);
+        toast(`多いので、記録の多い${send.length}軒を送ります`);
+      }
+      const list2 = send;
+      const text =
+`フーデリ採算くん 店舗データ（${list2.length}軒）
+
+タップすると中身が見られます。
+取り込むかどうかは、見てから1軒ずつ選べます。
+
+${url}`;
+      if(navigator.share){
+        try{ await navigator.share({title:"店舗データ", text}); return; }
+        catch(e){ if(e && e.name==="AbortError") return; }
+      }
+      try{ await navigator.clipboard.writeText(text); toast("コピーしました。LINEに貼って送ってください"); }
+      catch(e){ prompt("この文をコピーして送ってください", text); }
+    }catch(e){ toast("リンクを作れませんでした"); }
+  };
+}
+
+// 受け取った側の画面
+async function openSharedLink(code){
+  $("share").classList.add("on");
+  const el = $("swBody");
+  el.innerHTML = `<div class="card"><span class="spin"></span>中身を確認しています…</div>`;
+  let data;
+  try{ data = await unpackShare(code); }
+  catch(e){ el.innerHTML = `<div class="note warn">このリンクは読み取れませんでした。<br>送り直してもらってください。</div>`; return; }
+  const list = (data && data.s) || [];
+  if(!list.length){ el.innerHTML = `<div class="note warn">中身が空でした。</div>`; return; }
+
+  el.innerHTML = `
+  <div class="note info" style="margin-top:0">
+    <b>${list.length}軒ぶんの店舗データ</b>が届いています${data.at?`（${esc(data.at)}）`:""}。<br>
+    取り込むものを選んでください。<b>自分の記録は上書きされません。</b>
+  </div>
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn ghost sm" id="swAll">すべて選ぶ</button>
+      <button class="btn ghost sm" id="swNone">すべて外す</button>
+    </div>
+    ${list.map((s,i)=>{
+      const k = normStore(s.n);
+      const mine = storeStats(s.n);
+      const dup = mine && mine.count >= cfg.minSamples;
+      return `<div class="pick ${dup?"dup":""}">
+        <input type="checkbox" id="sw${i}" ${dup?"":"checked"}>
+        <label class="b" for="sw${i}">
+          <div class="nm">${esc(s.n)}${dup?`<span class="mineTag">自分の記録あり</span>`:""}</div>
+          <div class="sm">${[
+            s.w!=null?`店待ち平均${s.w}分`:"",
+            s.c?`${s.c}件の記録から`:"",
+            s.la?"位置あり":"",
+            s.t?s.t.join(" / "):"",
+            s.m?esc(s.m):""
+          ].filter(Boolean).join(" ・ ")}</div>
+        </label>
+      </div>`;
+    }).join("")}
+  </div>
+  <button class="btn primary" id="swTake">選んだ店を取り込む</button>
+  <button class="btn ghost" id="swSkip" style="margin-top:10px">取り込まない</button>`;
+
+  const boxes = list.map((_,i)=> $("sw"+i));
+  $("swAll").onclick  = ()=> boxes.forEach(b=> b.checked = true);
+  $("swNone").onclick = ()=> boxes.forEach(b=> b.checked = false);
+  $("swSkip").onclick = ()=>{ clearShareHash(); $("share").classList.remove("on"); };
+  $("swTake").onclick = ()=>{
+    let cnt = 0;
+    list.forEach((s,i)=>{
+      if(!boxes[i].checked) return;
+      const k = normStore(s.n); if(!k) return;
+      // 位置：自分が覚えていなければもらう
+      if(s.la!=null && s.lo!=null && !storeGeo[k]){
+        storeGeo[k] = {lat:s.la, lng:s.lo, n:1, name:s.n, shared:true};
+      }
+      // メモ：タグは合わせ、文章は自分が書いていなければもらう
+      const cur = storeNote[k] || {tags:[], text:"", photos:[]};
+      const tags = [...new Set([...(cur.tags||[]), ...((s.t)||[])])];
+      const note = {
+        ...cur, tags, name: cur.name || s.n,
+        text: cur.text || s.m || "",
+        sharedWait: s.w,            // 仲間の店待ち平均。自分の実績とは別に持つ
+        sharedN: s.c || 0,
+        at: new Date().toISOString()
+      };
+      storeNote[k] = note;
+      cnt++;
+    });
+    saveGeo(); saveNote();
+    clearShareHash();
+    sndSave(); vibe(50);
+    $("swBody").innerHTML = `<div class="card" style="text-align:center">
+      <div style="font-size:30px;color:var(--green)">✓</div>
+      <div style="font-weight:800;margin-top:6px">${cnt}軒を取り込みました</div>
+      <div class="label" style="margin-top:6px">判定画面で店名を入れると、仲間の情報も一緒に出ます</div>
+    </div>
+    <button class="btn primary" id="swDone">閉じる</button>`;
+    $("swDone").onclick = ()=>{ $("share").classList.remove("on"); renderSettings(); };
+  };
+}
+function clearShareHash(){
+  try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){ location.hash = ""; }
+}
+// 仲間からもらった情報の表示
+function sharedNoteHtml(name){
+  const nt = storeNote[normStore(name)];
+  if(!nt || nt.sharedWait==null) return "";
+  return `<div class="note info" style="margin-top:10px">
+    仲間の記録：店待ち平均<b>${nt.sharedWait}分</b>${nt.sharedN?`（${nt.sharedN}件から）`:""}
+    <br><span class="label">自分の実測が貯まると、そちらが優先されます</span></div>`;
+}
+
+/* =========================================================
    店舗メモ
    走行中に文章は打てないので、よくあるものはタップで付けられるようにする。
    マップのスクショや駐輪場所の写真も貼れる。
@@ -4913,6 +5174,12 @@ if(!cfg.seenGuide) $("guide").classList.add("on");
 
 restoreState();
 renderToday();
+
+// 共有リンクで開かれたら、取り込み画面を出す
+(function(){
+  const m = (location.hash||"").match(/#store=(.+)$/);
+  if(m) setTimeout(()=> openSharedLink(m[1]), 300);
+})();
 
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
   navigator.serviceWorker.register("./sw.js").catch(()=>{});
