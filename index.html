@@ -4729,7 +4729,7 @@ function renderShareOut(){
     <div class="label" style="margin-bottom:10px">
       ① 下のボタンでコピー<br>
       ② LINEのトークに貼り付けて送信<br>
-      <span style="opacity:.8">ファイルの保存も選択も要りません</span>
+      <span style="opacity:.8">取り込み方の案内も一緒に入るので、相手への説明は要りません</span>
     </div>
     <button class="btn primary sm" id="shCopy">この内容をコピーする</button>
     <div id="shCopyMsg"></div>
@@ -4797,7 +4797,17 @@ function downloadShare(blob, name){
 async function packShareText(list){
   const code = await packShare({v:1, at:new Date().toISOString().slice(0,10), s:list});
   return `フーデリ採算くん 店舗データ（${list.length}軒）
-アプリの ⚙ →「店舗データを送る・受け取る」→「取り込む」で貼り付けてください。
+
+【取り込み方】
+① このメッセージを長押しして「コピー」
+　（この案内文ごと全部コピーでOKです）
+② フーデリ採算くんを開く
+③ 右上の ⚙ →「店舗データを送る・受け取る」
+④「送られたデータを取り込む」
+⑤「貼り付けて読み込む」を押す
+
+アプリを持っていない人はこちら
+${LP_URL}
 --------
 FDS1:${code}
 --------`;
@@ -4813,7 +4823,8 @@ function renderShareInHome(){
   <div class="card">
     <h2>かんたん（貼り付ける）</h2>
     <div class="label" style="margin-bottom:10px">
-      ① LINEの文字を長押し →「コピー」<br>
+      ① LINEのメッセージを長押し →「コピー」<br>
+      　<b>案内文ごと全部コピーで大丈夫です</b><br>
       ② 下のボタンを押す
     </div>
     <button class="btn primary sm" id="shPaste" style="margin-bottom:8px">貼り付けて読み込む</button>
