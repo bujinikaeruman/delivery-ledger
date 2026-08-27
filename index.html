@@ -233,47 +233,57 @@ body.big .badge{font-size:13px;padding:4px 10px}
 body.big .note{font-size:15px}
 
 /* ===== ワンタップ記録：走行前後に1回押すだけの全画面モード ===== */
-#quick{
-  position:fixed;inset:0;z-index:80;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
-}
-#quick.on{display:flex}
-#qTop{display:flex;justify-content:space-between;align-items:center;gap:8px}
-#qTop select{width:auto;flex:1;padding:9px 30px 9px 10px;font-size:15px}
-#qTop button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
-#qPlan{display:none;margin-top:10px;border:1px solid var(--qbg);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6}
+/* ===== 画面1：稼働 ===== */
+nav{grid-template-columns:repeat(2,1fr)}
+#wTop{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+#wToday{flex:1;font-size:14px;font-weight:800;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#wTop select{width:auto;flex:none;max-width:52%;padding:10px 30px 10px 12px;font-size:15px;font-weight:800;border-color:var(--qbg);color:var(--qbg)}
+
+/* サービスごとの配色 */
+#v-work{--qbg:#F0B429; --qfg:#1A1204; --qbg2:#C48F14}
+#v-work[data-svc="uber-eats"] {--qbg:#06C167; --qfg:#04231A; --qbg2:#00A957}
+#v-work[data-svc="demae-can"] {--qbg:#E01F2D; --qfg:#FFFFFF; --qbg2:#A9141F}
+#v-work[data-svc="rocket-now"]{--qbg:#1E5BE6; --qfg:#FFFFFF; --qbg2:#1543AE}
+
+#qPlan{display:none;margin-bottom:8px;border:1px solid var(--qbg);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6}
 #qPlan.on{display:block}
-#qNote{display:none;margin-top:8px;border:1px solid var(--amber);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6;cursor:pointer}
+#qPlan b{color:var(--qbg)}
+#qNote{display:none;margin-bottom:8px;border:1px solid var(--amber);border-radius:12px;padding:9px 12px;font-size:12.5px;line-height:1.6;cursor:pointer}
 #qNote.on{display:block}
 #qNote b{color:var(--amber)}
-#qPlan b{color:var(--qbg)}
-#qStep{text-align:center;margin:14px 0 2px;font-size:12px;color:var(--muted);letter-spacing:.14em;font-weight:800}
-#qElapsed{text-align:center;font-size:62px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-#qHint{text-align:center;font-size:13px;color:var(--muted);margin-top:6px;min-height:20px}
-/* サービスごとの配色。既定はその他（琥珀） */
-#quick{--qbg:#F0B429; --qfg:#1A1204; --qbg2:#C48F14}
-#quick[data-svc="uber-eats"] {--qbg:#06C167; --qfg:#04231A; --qbg2:#00A957}  /* Uber = 緑 */
-#quick[data-svc="demae-can"] {--qbg:#E01F2D; --qfg:#FFFFFF; --qbg2:#A9141F}  /* 出前館 = 赤 */
-#quick[data-svc="rocket-now"]{--qbg:#1E5BE6; --qfg:#FFFFFF; --qbg2:#1543AE}  /* Rocket Now = 青 */
 
-#qBtns{flex:1;margin-top:12px;display:flex;flex-direction:column;gap:9px;min-height:0}
+#wMeter{text-align:center;padding:6px 0 10px}
+#qStep{font-size:12px;color:var(--muted);letter-spacing:.12em;font-weight:800}
+#qElapsed{font-size:46px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-top:2px}
+#qHint{font-size:13px;color:var(--muted);margin-top:4px}
+#qMark{font-size:14px;font-weight:800;color:var(--amber);min-height:20px;margin-top:2px}
+#qMark.warn{color:var(--red)}
+
+/* 帯ボタン。次に押すものだけがゆっくり光る */
+#qBtns{display:flex;flex-direction:column;gap:9px}
 .qbtn{
-  flex:1;border:none;border-radius:18px;font-size:27px;font-weight:800;
-  letter-spacing:.04em;font-family:inherit;cursor:pointer;
-  background:var(--qbg);color:var(--qfg);
+  border:none;border-radius:14px;min-height:62px;padding:14px 12px;
+  font-size:22px;font-weight:800;letter-spacing:.03em;font-family:inherit;cursor:pointer;
+  background:var(--qbg);color:var(--qfg);width:100%;
 }
 .qbtn:active{transform:scale(.99)}
-/* 「完了」系だけ同系色の濃いほうにして、押す場所の違いが分かるようにする */
 .qbtn.stop,.qbtn.fin{background:var(--qbg2);color:var(--qfg)}
-#qMark{text-align:center;font-size:15px;font-weight:800;color:var(--amber);min-height:22px;margin-top:4px}
-#qMark.warn{color:var(--red)}
-#qTools{display:flex;gap:8px;margin-top:9px}
-#qTools button{
-  flex:1;border:1px solid var(--line);background:transparent;color:var(--ink);
-  border-radius:12px;padding:13px 4px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;
+.qbtn.dim{opacity:.35}
+.qbtn.next{animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{0%,100%{filter:brightness(1)}50%{filter:brightness(1.45)}}
+
+#qSave{
+  margin-top:10px;border:2px solid var(--green);background:transparent;color:var(--green);
+  border-radius:14px;padding:15px;font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;
+  display:none;width:100%;
 }
-#qTools button.on{border-color:var(--qbg);color:var(--qbg)}
-#qMemo{display:none;margin-top:9px;border:1px solid var(--line);border-radius:12px;padding:12px}
+#qTools{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}
+#qTools button{
+  border:1px solid var(--line);background:transparent;color:var(--ink);
+  border-radius:11px;padding:12px 2px;font-size:12.5px;font-weight:800;font-family:inherit;cursor:pointer;
+}
+#qMemo{display:none;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px}
+#qMemo.on{display:block}
 #qStores{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:11px}
 #qStores button{
   border:1px solid var(--qbg);background:transparent;color:var(--ink);
@@ -282,14 +292,10 @@ body.big .note{font-size:15px}
 }
 #qStores button.on{background:var(--qbg);color:var(--qfg)}
 #qStores .none{grid-column:1/-1;color:var(--muted);font-size:12px;text-align:center;padding:6px}
-#qMemo.on{display:block}
-#qSave{
-  margin-top:9px;border:2px solid var(--qbg);background:transparent;color:var(--qbg);
-  border-radius:16px;padding:16px;font-size:18px;font-weight:800;font-family:inherit;cursor:pointer;display:none;
-}
-#qkSvc{border-color:var(--qbg);color:var(--qbg);font-weight:800}
-#qLog{text-align:center;font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
-#qLoss{position:absolute;inset:0;background:rgba(0,0,0,.94);display:none;align-items:center;justify-content:center;padding:18px}
+#qLog{text-align:center;font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
+
+/* 中止のときに出す選択 */
+#qLoss{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;align-items:center;justify-content:center;padding:18px;z-index:70}
 #qLoss.on{display:flex}
 #qLossBox{width:100%;max-width:420px}
 .lossTtl{text-align:center;font-size:16px;font-weight:800;margin-bottom:14px;color:var(--ink)}
@@ -298,149 +304,6 @@ body.big .note{font-size:15px}
   font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;background:var(--qbg);color:var(--qfg);
 }
 .lossBtn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:15px;padding:13px}
-#quick{position:fixed}
-
-/* 店舗データの共有 */
-#share{
-  position:fixed;inset:0;z-index:94;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#share.on{display:flex}
-#swTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#swTop h2{margin:0;font-size:18px;font-weight:800}
-#swTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.pick{display:flex;gap:11px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
-.pick:last-child{border-bottom:none}
-.pick input[type=checkbox]{width:24px;height:24px;flex:none;margin-top:2px;accent-color:var(--amber)}
-.pick .b{flex:1;min-width:0}
-.pick .b .nm{font-weight:800;font-size:15px}
-.pick .b .sm{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.7}
-.pick.dup{opacity:.6}
-body.day .pick{border-bottom-color:rgba(0,0,0,.1)}
-.mineTag{display:inline-block;background:rgba(159,179,200,.18);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:800;margin-left:6px}
-
-/* 店舗メモ */
-#note{
-  position:fixed;inset:0;z-index:93;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#note.on{display:flex}
-#ntTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#ntTop h2{margin:0;font-size:18px;font-weight:800}
-#ntTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.tags{display:flex;flex-wrap:wrap;gap:7px}
-.tg{
-  border:1px solid var(--line);background:transparent;color:var(--muted);
-  border-radius:20px;padding:10px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
-}
-.tg.on{background:var(--amber);border-color:var(--amber);color:#1A1204}
-.tg.warn.on{background:var(--red);border-color:var(--red);color:#fff}
-.tg.good.on{background:var(--green);border-color:var(--green);color:#04231A}
-.photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.ph{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
-.ph img{width:100%;display:block;aspect-ratio:3/4;object-fit:cover}
-.ph button{
-  position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);color:#fff;border:none;
-  border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;font-family:inherit;
-}
-.noteChip{
-  display:inline-block;background:rgba(240,180,41,.16);color:var(--amber);
-  border-radius:6px;padding:3px 9px;font-size:12px;font-weight:800;margin:2px 4px 2px 0;
-}
-.noteChip.warn{background:rgba(232,80,91,.16);color:var(--red)}
-.noteChip.good{background:rgba(47,184,138,.16);color:var(--green)}
-.dayRow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
-.dayRow:last-child{border-bottom:none}
-.dayRow .dh{display:flex;align-items:baseline;gap:8px}
-.dayRow .dd{font-size:15px;font-weight:800}
-.dayRow .dw{font-size:12px;color:var(--muted)}
-.dayRow .dt{margin-left:auto;font-size:20px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
-.dayRow .ds{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
-.dayRow .ds b{color:var(--ink);font-weight:800}
-.dayRow .dx{font-size:13px;margin-top:3px}
-body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
-
-/* 育ち具合 */
-#grow{
-  position:fixed;inset:0;z-index:91;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#grow.on{display:flex}
-#grTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#grTop h2{margin:0;font-size:18px;font-weight:800}
-#grTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.lvBox{text-align:center;padding:6px 0 2px}
-.lvNo{font-size:56px;font-weight:800;line-height:1;color:var(--amber);font-variant-numeric:tabular-nums}
-.lvNm{font-size:19px;font-weight:800;margin-top:4px}
-.lvBar{height:12px;background:rgba(255,255,255,.09);border-radius:7px;overflow:hidden;margin:14px 0 6px}
-.lvBar i{display:block;height:100%;background:var(--amber);border-radius:7px;transition:width .4s}
-body.day .lvBar{background:rgba(0,0,0,.1)}
-.unl{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
-.unl:last-child{border-bottom:none}
-.unl .mk{font-size:16px;line-height:1.4}
-.unl .bd{flex:1}
-.unl .bd b{display:block}
-.unl .bd span{font-size:12px;color:var(--muted)}
-.unl.off .bd b{color:var(--muted)}
-.stat.tap{cursor:pointer;position:relative}
-.stat.tap::after{content:"›";position:absolute;right:7px;top:6px;font-size:14px;color:var(--muted)}
-.stat.tap.on{outline:2px solid var(--amber);outline-offset:-2px}
-body.day .unl{border-bottom-color:rgba(0,0,0,.1)}
-
-/* APIキーの取り方 */
-#keyGuide{
-  position:fixed;inset:0;z-index:92;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#keyGuide.on{display:flex}
-#kgTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#kgTop h2{margin:0;font-size:18px;font-weight:800}
-#kgTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.kgStep{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
-.kgNo{
-  flex:none;width:34px;height:34px;border-radius:50%;background:var(--amber);color:#1A1204;
-  font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;
-}
-.kgTxt{flex:1;min-width:0}
-.kgTxt b{display:block;font-size:16px;margin-bottom:5px}
-.kgTxt span{font-size:14px;color:var(--muted);line-height:1.8}
-.kgTxt input{font-size:16px}
-
-/* 配達1件の詳細 */
-#detail{
-  position:fixed;inset:0;z-index:87;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#detail.on{display:flex}
-#detailTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#detailTop h2{margin:0;font-size:18px;font-weight:800}
-#detailTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.brk{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
-.brk:last-child{border-bottom:none}
-.brk .k{color:var(--muted);font-size:13px;min-width:6.5em}
-.brk .v{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
-body.day .brk{border-bottom-color:rgba(0,0,0,.1)}
-.bar2{height:7px;background:rgba(255,255,255,.09);border-radius:5px;overflow:hidden;margin-top:5px}
-.bar2 i{display:block;height:100%;border-radius:5px;background:var(--amber)}
-body.day .bar2{background:rgba(0,0,0,.1)}
-.item.tap{cursor:pointer}
-
-/* 1日の締め */
-#close{
-  position:fixed;inset:0;z-index:89;background:var(--navy);display:none;flex-direction:column;
-  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
-}
-#close.on{display:flex}
-#closeTop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
-#closeTop h2{margin:0;font-size:18px;font-weight:800}
-#closeTop button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer}
-.chk{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:14px}
-.chk:last-child{border-bottom:none}
-.chk .mk{font-size:17px;line-height:1.3}
-.chk .bd{flex:1}
-.chk .bd b{display:block;margin-bottom:2px}
-.chk .bd span{font-size:12px;color:var(--muted)}
-body.day .chk{border-bottom-color:rgba(0,0,0,.1)}
 
 /* スクショ読み取り結果 */
 #shot{
@@ -531,7 +394,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 <main>
 
 <!-- ========== 今日 ========== -->
-<section class="view on" id="v-today">
+<section class="view" id="v-today">
   <div class="card">
     <div class="label">今日の実質手取り</div>
     <div class="big green num" id="tdNet">¥0</div>
@@ -776,23 +639,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <button class="btn ghost sm" id="eAdd">支出を追加</button>
   </div>
 
-  <div class="card">
-    <h2>今月の収支</h2>
-    <div id="monthBox"></div>
-  </div>
 
-  <div class="card">
-    <h2>日別の収支</h2>
-    <div id="dayBox"></div>
-  </div>
-</section>
-
-<!-- ========== 履歴 ========== -->
-<section class="view" id="v-hist">
-  <div class="card">
-    <h2>配達履歴</h2>
-    <div id="histList"><div class="empty">まだ記録がありません</div></div>
-  </div>
 </section>
 
 <!-- ========== 分析 ========== -->
@@ -816,8 +663,6 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card"><h2>想定と実測のズレ</h2><div id="anGap"></div></div>
   <div class="card"><h2>今週と先週</h2><div id="anWeek"></div></div>
   <div class="card"><h2>サービス別</h2><div id="anSvc"></div></div>
-  <div class="card"><h2>店舗別（2件以上）</h2><div id="anStore"></div></div>
-  <div class="card"><h2>配達先エリア別</h2><div id="anArea"></div></div>
   <div class="card"><h2>時間帯別</h2><div id="anSlot"></div></div>
   <div class="card"><h2>建物別の受渡時間</h2><div id="anBuild"></div></div>
   <div class="card"><h2>建物種別の受渡時間</h2><div id="anBld"></div></div>
@@ -869,6 +714,15 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
     <div class="label" id="speedNote" style="margin:-4px 0 10px"></div>
     <button class="btn primary sm" id="cfgSave">この設定を保存</button>
     <div class="note info">受注前も保存後のスコアも、この1組の数字だけを見ています。判定と評価が食い違うことはありません。</div>
+  </div>
+
+  <div class="card">
+    <h2>ほかの画面</h2>
+    <button class="btn ghost sm" id="setScan" style="margin-bottom:8px">🎯 案件を判定する</button>
+    <button class="btn ghost sm" id="setMoney" style="margin-bottom:8px">💰 クエスト・支出</button>
+    <button class="btn ghost sm" id="setAna" style="margin-bottom:8px">📈 くわしい分析</button>
+    <button class="btn ghost sm" id="setGrow" style="margin-bottom:8px">🌱 育ち具合</button>
+    <button class="btn ghost sm" id="setAi2">📰 お知らせの要約</button>
   </div>
 
   <div class="card">
@@ -948,45 +802,58 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
 </main>
 
-<!-- ワンタップ記録（全画面・相乗せ対応） -->
-<div id="quick">
-  <div id="qTop">
+<!-- ===== 画面1：稼働 ===== -->
+<section class="view on" id="v-work">
+  <div id="wTop">
+    <div id="wToday">今日 0件 ¥0</div>
     <select id="qkSvc" aria-label="サービス">
       <option value="uber-eats">Uber Eats</option>
       <option value="demae-can">出前館</option>
       <option value="rocket-now">Rocket Now</option>
       <option value="other">その他</option>
     </select>
-    <button id="qClose">戻る</button>
   </div>
+
   <div id="qPlan"></div>
   <div id="qNote"></div>
-  <div id="qStep">ピック 0 ／ ドロップ 0</div>
-  <div id="qElapsed" class="num">0:00</div>
-  <div id="qHint">案件を受けたら押す</div>
+
+  <div id="wMeter">
+    <div id="qStep">ピック 0 ／ ドロップ 0</div>
+    <div id="qElapsed" class="num">0:00</div>
+    <div id="qHint">案件を受けたら押す</div>
+    <div id="qMark"></div>
+  </div>
+
   <div id="qBtns">
     <button id="qAccept" class="qbtn">🚩 案件を受けた</button>
     <button id="qPick" class="qbtn">🏪 店に到着</button>
     <button id="qDrop" class="qbtn">🏠 配達先に到着</button>
     <button id="qMain" class="qbtn" style="display:none">受取完了</button>
   </div>
-  <div id="qMark"></div>
+
+  <button id="qSave">この束を保存</button>
+
   <div id="qTools">
-    <button id="qMemoBtn">📝 店名・報酬</button>
-    <button id="qNoteBtn">🗒 店メモ</button>
+    <button id="wMapBtn">🗺 マップ</button>
     <button id="qCashBtn">💴 釣銭</button>
+    <button id="wShotBtn">📸 スクショ</button>
     <button id="qStopBtn">⏹ 中止</button>
   </div>
-  <div id="qMemo">
+
+  <div id="qMemo" class="on">
     <div id="qStores"></div>
     <div class="row">
       <label class="f" style="margin:0"><span>店舗名</span><input id="qkStore" list="storeList" placeholder="店舗名"></label>
       <label class="f" style="margin:0"><span>報酬合計（円）</span><input id="qkFee" type="number" inputmode="numeric" placeholder="600"></label>
     </div>
-    <div class="label" style="margin-top:8px">計測は止まりません。ここまで入れておけば、あとで入力する手間がなくなります。相乗せのときは束の合計を入れると件数で等分されます。</div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn ghost sm" id="qNoteBtn">🗒 この店のメモ</button>
+      <button class="btn ghost sm" id="qMemoBtn">▾ 隠す</button>
+    </div>
   </div>
-  <button id="qSave">この束を保存</button>
+
   <div id="qLog"></div>
+
   <div id="qLoss">
     <div id="qLossBox">
       <div class="lossTtl">計測をやめます。この時間は？</div>
@@ -999,7 +866,50 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
       <button class="lossBtn ghost" id="qLossCancel">やめる</button>
     </div>
   </div>
-</div>
+</section>
+
+<!-- ===== 画面2：記録 ===== -->
+<section class="view" id="v-rec">
+  <input id="shFile2" type="file" accept="image/*" multiple style="display:none">
+  <button class="btn primary" id="recShot" style="margin-bottom:10px">📸 スクショを読ませる</button>
+  <div id="recDrafts"></div>
+
+  <div class="card">
+    <h2>今月</h2>
+    <div id="monthBox"></div>
+  </div>
+
+  <div class="card">
+    <h2>日別</h2>
+    <div id="dayBox"></div>
+  </div>
+
+  <div class="card">
+    <h2>配達履歴</h2>
+    <div id="histList"></div>
+  </div>
+
+  <div class="card">
+    <h2>店舗別</h2>
+    <div id="anStore"></div>
+  </div>
+
+  <div class="card">
+    <h2>配達先エリア別</h2>
+    <div id="anArea"></div>
+  </div>
+
+  <div class="card">
+    <h2>そのほか</h2>
+    <button class="btn ghost sm" id="recScan" style="margin-bottom:8px">🎯 案件を判定する</button>
+    <button class="btn ghost sm" id="recMoney" style="margin-bottom:8px">💰 クエスト・支出</button>
+    <button class="btn ghost sm" id="recAna" style="margin-bottom:8px">📈 くわしい分析</button>
+    <button class="btn ghost sm" id="recGrow" style="margin-bottom:8px">🌱 育ち具合</button>
+    <button class="btn ghost sm" id="recShare" style="margin-bottom:8px">📤 仲間に送る</button>
+    <button class="btn ghost sm" id="recClose">🏁 今日の締め</button>
+  </div>
+  <div style="height:12px"></div>
+</section>
 
 <!-- スクショ読み取り結果（種類を自動判別） -->
 <div id="shot">
@@ -1139,12 +1049,8 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 </div>
 
 <nav>
-  <button data-v="today" class="on"><span class="ic">📊</span>今日</button>
-  <button data-v="scan"><span class="ic">🎯</span>判定</button>
-  <button data-v="add"><span class="ic">✍️</span>記録</button>
-  <button data-v="money"><span class="ic">💰</span>収支</button>
-  <button data-v="hist"><span class="ic">📋</span>履歴</button>
-  <button data-v="ana"><span class="ic">📈</span>分析</button>
+  <button data-v="work" class="on"><span class="ic">🛵</span>稼働</button>
+  <button data-v="rec"><span class="ic">📋</span>記録</button>
 </nav>
 
 <!-- 初回ガイド -->
@@ -1426,7 +1332,7 @@ function saveState(){
     localStorage.setItem(K_STATE, JSON.stringify({
       qk: {legs:qk.legs, cur:qk.cur, saved:qk.saved, plan:qk.plan},
       qkForm: {svc:$("qkSvc").value, store:$("qkStore").value, fee:$("qkFee").value},
-      quickOpen: $("quick").classList.contains("on"),
+      quickOpen: $("v-work").classList.contains("on"),
       add: {
         editingId,
         svc:$("aSvc").value, store:$("aStore").value, area:$("aArea").value, bldName:$("aBldName").value, fee:$("aFee").value,
@@ -1469,8 +1375,8 @@ function restoreState(){
     $("sRetMin").value=c.retMin||""; $("sWait").value=c.wait||""; $("sDropCount").value=c.dc||"";
   }
   if(s.cash){ $("cashAmt").value=s.cash.amt||""; $("cashGot").value=s.cash.got||""; }
-  // 計測が途中なら、そのまま計測画面に戻す
-  if(s.quickOpen && (qk.legs.length || qk.cur)) openQuick(true);
+  // 計測が途中なら、そのまま稼働画面に戻す
+  if(qk.legs.length || qk.cur) show("work");
 }
 
 /* =========================================================
@@ -1575,7 +1481,7 @@ const questShareInMonth = mk => questShareBy(monthKey, mk);
 /* =========================================================
    画面切替
    ========================================================= */
-const RENDER = {today:renderToday, hist:renderHist, ana:renderAnalytics, set:renderSettings, scan:calcScan, add:calcAddPreview, money:renderMoney, ai:renderAi};
+const RENDER = {work:renderWork, rec:renderRec, today:renderToday, hist:renderHist, ana:renderAnalytics, set:renderSettings, scan:calcScan, add:calcAddPreview, money:renderMoney, ai:renderAi};
 
 // 昼モード・巨大ボタンの適用
 function applyDisplay(){
@@ -1611,6 +1517,53 @@ $("goScan").onclick = ()=> show("scan");
 $("goAdd").onclick  = ()=> { resetAddForm(); show("add"); };
 $("goAi").onclick   = ()=> show("ai");
 $("goQuick").onclick= ()=> openQuick();
+
+/* ===== 画面2：記録 =====
+   収支・履歴・分析をひとつにまとめた画面 */
+function renderRec(){
+  // 未入力の案内
+  const drafts = entries.filter(e=>e.draft).sort((a,b)=> new Date(a.completedAt)-new Date(b.completedAt));
+  $("recDrafts").innerHTML = drafts.length
+    ? `<div class="note warn" style="margin:0 0 12px">報酬が未入力の配達が<b>${drafts.length}件</b>あります。
+       <button class="btn primary sm" id="recFill" style="margin-top:10px">いちばん古いのを入力する</button></div>` : "";
+  if(drafts.length) $("recFill").onclick = ()=>{ loadEntryToForm(drafts[0]); show("add"); };
+
+  renderMonth();
+  renderDaily();
+  renderHist();
+  renderStoreTable();
+  renderAreaTable();
+}
+
+/* 画面1の道具ボタン */
+$("wMapBtn").onclick = ()=>{
+  // 覚えている店があればそこへ、なければ地図を開くだけ
+  const nm = $("qkStore").value.trim() || (qk.plan ? qk.plan.storeName : "");
+  const g = nm ? navTargetForStore(nm, "") : null;
+  if(g) openNav(g);
+  else window.open("https://www.google.com/maps", "_blank", "noopener");
+};
+$("wShotBtn").onclick = ()=> $("shFile").click();
+$("qMemoBtn").onclick = ()=>{
+  const on = $("qMemo").classList.toggle("on");
+  $("qMemoBtn").textContent = on ? "▾ 隠す" : "▸ 店名・報酬";
+  if(on) renderQuickStores();
+};
+
+/* 画面2からの入口 */
+$("setScan").onclick  = ()=> show("scan");
+$("setMoney").onclick = ()=> show("money");
+$("setAna").onclick   = ()=> show("ana");
+$("setGrow").onclick  = ()=>{ $("grow").classList.add("on"); renderGrow(); };
+$("setAi2").onclick   = ()=> show("ai");
+
+$("recShot").onclick  = ()=> $("shFile").click();
+$("recScan").onclick  = ()=> show("scan");
+$("recMoney").onclick = ()=> show("money");
+$("recAna").onclick   = ()=> show("ana");
+$("recGrow").onclick  = ()=>{ $("grow").classList.add("on"); renderGrow(); };
+$("recShare").onclick = openShare;
+$("recClose").onclick = ()=>{ $("close").classList.add("on"); renderClose(); };
 
 /* =========================================================
    今日
@@ -2315,27 +2268,35 @@ async function keepAwake(on){
   }catch(e){ /* 非対応端末では何もしない */ }
 }
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState==="visible" && $("quick").classList.contains("on")) keepAwake(true);
+  if(document.visibilityState==="visible" && $("v-work").classList.contains("on")) keepAwake(true);
 });
 
 // resume=true なら今の計測内容を引き継ぐ
 function openQuick(resume){
-  if(!resume){
+  if(!resume && !qBusy()){
     qk = {legs:[], cur:null, lastMin:0, plan:null, saved: entries.filter(e=> e.draft && dayKey(e.completedAt)===dayKey(new Date())).length};
-    $("qkStore").value = ""; $("qkFee").value = "";
   }
-  $("quick").classList.add("on");
-  applyQuickTheme(); renderQuickStores(); paintQuick(); saveState();
+  show("work");
+}
+/* 稼働画面を描く */
+function renderWork(){
+  applyQuickTheme(); renderQuickStores(); paintQuick(); paintWorkToday(); saveState();
   keepAwake(true);
   if(qTick) clearInterval(qTick);
-  qTick = setInterval(paintQuick, 1000);
+  qTick = setInterval(()=>{ paintQuick(); }, 1000);
+}
+function paintWorkToday(){
+  const dk = dayKey(new Date());
+  const list = live().filter(e=> dayKey(e.completedAt)===dk);
+  const fee = list.reduce((a,e)=>a+n(e.feeYen),0);
+  const drafts = entries.filter(e=> e.draft && dayKey(e.completedAt)===dk).length;
+  $("wToday").textContent = `今日 ${list.length}件 ${yen(fee)}` + (drafts?`（未入力${drafts}）`:"");
 }
 // 閉じても計測は続いたまま。今日タブのバナーから戻れる
 function closeQuick(){
-  $("quick").classList.remove("on");
   if(qTick){ clearInterval(qTick); qTick = null; }
   keepAwake(false);
-  saveState(); renderToday(); show("today");
+  saveState(); show("rec");
 }
 const qCount = t => qk.legs.filter(l=>l.type===t).length;
 const qBusy  = ()=> qk.legs.length>0 || !!qk.cur;
@@ -2372,7 +2333,7 @@ function renderQuickStores(){
 function paintDock(){
   const d = $("liveDock");
   const busy = qBusy();
-  const open = $("quick").classList.contains("on");
+  const open = $("v-work").classList.contains("on");
   if(!busy || open){ d.classList.remove("on"); return; }
   d.classList.add("on");
   const p = qCount("P"), dr = qCount("D");
@@ -2389,10 +2350,10 @@ function paintDock(){
   d.querySelector(".dt").textContent = label;
   d.querySelector(".de").textContent = mmss((Date.now()-from)/1000);
 }
-$("liveDock").onclick = ()=> openQuick(true);
+$("liveDock").onclick = ()=> show("work");
 setInterval(paintDock, 1000);
 
-function applyQuickTheme(){ $("quick").setAttribute("data-svc", $("qkSvc").value); }
+function applyQuickTheme(){ $("v-work").setAttribute("data-svc", $("qkSvc").value); }
 
 function paintQuick(){
   const p = qCount("P"), d = qCount("D");
@@ -2416,10 +2377,10 @@ function paintQuick(){
   $("qPick").style.display = isStop ? "none" : "block";
   $("qDrop").style.display = isStop ? "none" : "block";
   $("qMain").style.display = isStop ? "block" : "none";
-
   if(isStop){
     $("qMain").textContent = qk.cur.type==="P" ? "受取完了" : "受渡完了";
-    $("qMain").className = "qbtn " + (qk.cur.type==="P" ? "stop" : "fin");
+    $("qMain").classList.toggle("stop", qk.cur.type==="P");
+    $("qMain").classList.toggle("fin",  qk.cur.type==="D");
     $("qHint").textContent = qk.cur.type==="P" ? "商品を受け取ったら押す" : "渡し終わったら押す";
     $("qElapsed").textContent = mmss((Date.now()-qk.cur.start)/1000);
   }else{
@@ -2428,6 +2389,19 @@ function paintQuick(){
     const from = qk.cur ? qk.cur.start : (qk.legs.length ? qk.legs[0].start : null);
     $("qElapsed").textContent = from ? mmss((Date.now()-from)/1000) : "0:00";
   }
+
+  // 次に押すボタンだけをゆっくり光らせる
+  let next;
+  if(isStop) next = "qMain";                                   // 完了待ち
+  else if(!qBusy()) next = "qAccept";                          // これから受注
+  else if(qk.cur && qk.cur.type==="M") next = "qPick";         // 店へ移動中
+  else next = (p > d) ? "qDrop" : "qPick";                     // 荷物を持っていれば配達先へ
+  ["qAccept","qPick","qDrop","qMain"].forEach(id=>{
+    const el = $(id);
+    const shown = el.style.display !== "none";
+    el.classList.toggle("next", shown && id===next);
+    el.classList.toggle("dim",  shown && id!==next);
+  });
 
   // 区間が動いているあいだ、1分ごとに音と表示で知らせる
   const mk = $("qMark");
@@ -2552,7 +2526,8 @@ function qSaveBatch(){
   $("qkFee").value = "";           // 店舗名は次も同じ店の可能性があるので残す
   sndSave(); vibe(60);
   toast((feeEach>0||P ? `${D}件を保存しました` : `${D}件ぶんの時刻を記録しました`) + gapMsg);
-  paintQuick(); renderQuickStores(); saveState();
+  paintWorkToday();
+  paintQuick(); renderQuickStores(); paintWorkToday(); saveState();
 }
 
 $("qAccept").onclick = ()=> qStart("M");
@@ -2567,7 +2542,6 @@ $("qUndo").onclick   = ()=>{
   sndBad(); toast("1つ戻しました");
   paintQuick(); saveState();
 };
-$("qClose").onclick = closeQuick;
 $("qMemoBtn").onclick = ()=>{
   const on = $("qMemo").classList.toggle("on");
   $("qMemoBtn").classList.toggle("on", on);
