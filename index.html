@@ -277,10 +277,11 @@ nav{grid-template-columns:repeat(2,1fr)}
   border-radius:14px;padding:15px;font-size:17px;font-weight:800;font-family:inherit;cursor:pointer;
   display:none;width:100%;
 }
-#qTools{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:10px}
+#qTools{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
+#qTools button.on{border-color:var(--qbg);color:var(--qbg)}
 #qTools button{
   border:1px solid var(--line);background:transparent;color:var(--ink);
-  border-radius:11px;padding:12px 2px;font-size:12.5px;font-weight:800;font-family:inherit;cursor:pointer;
+  border-radius:11px;padding:12px 1px;font-size:11.5px;font-weight:800;font-family:inherit;cursor:pointer;
 }
 #qMemo{display:none;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px}
 #qMemo.on{display:block}
@@ -374,6 +375,112 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 #aiThumb{max-width:100%;border-radius:10px;border:1px solid var(--line);margin-top:10px;display:none}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+
+/* ===== 全画面で開くもの（共通の土台） ===== */
+#share,#note,#grow,#keyGuide,#detail,#close{
+  position:fixed;inset:0;background:var(--navy);display:none;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
+}
+#share.on,#note.on,#grow.on,#keyGuide.on,#detail.on,#close.on{display:flex}
+#share{z-index:94} #note{z-index:93} #keyGuide{z-index:92} #grow{z-index:91} #close{z-index:89} #detail{z-index:87}
+#swTop,#ntTop,#grTop,#kgTop,#detailTop,#closeTop{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;
+}
+#swTop h2,#ntTop h2,#grTop h2,#kgTop h2,#detailTop h2,#closeTop h2{margin:0;font-size:18px;font-weight:800}
+#swTop button,#ntTop button,#grTop button,#kgTop button,#detailTop button,#closeTop button{
+  background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;
+  padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;flex:none;
+}
+
+/* 店舗メモ */
+.tags{display:flex;flex-wrap:wrap;gap:7px}
+.tg{border:1px solid var(--line);background:transparent;color:var(--muted);
+  border-radius:20px;padding:10px 14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer}
+.tg.on{background:var(--amber);border-color:var(--amber);color:#1A1204}
+.tg.warn.on{background:var(--red);border-color:var(--red);color:#fff}
+.tg.good.on{background:var(--green);border-color:var(--green);color:#04231A}
+.photos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.ph{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.ph img{width:100%;display:block;aspect-ratio:3/4;object-fit:cover}
+.ph button{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);color:#fff;border:none;
+  border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;font-family:inherit}
+.noteChip{display:inline-block;background:rgba(240,180,41,.16);color:var(--amber);
+  border-radius:6px;padding:3px 9px;font-size:12px;font-weight:800;margin:2px 4px 2px 0}
+.noteChip.warn{background:rgba(232,80,91,.16);color:var(--red)}
+.noteChip.good{background:rgba(47,184,138,.16);color:var(--green)}
+
+/* 店舗データの共有 */
+.pick{display:flex;gap:11px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.pick:last-child{border-bottom:none}
+.pick input[type=checkbox]{width:24px;height:24px;flex:none;margin-top:2px;accent-color:var(--amber)}
+.pick .b{flex:1;min-width:0}
+.pick .b .nm{font-weight:800;font-size:15px}
+.pick .b .sm{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.7}
+.pick.dup{opacity:.6}
+.mineTag{display:inline-block;background:rgba(159,179,200,.18);color:var(--muted);
+  border-radius:5px;padding:2px 7px;font-size:11px;font-weight:800;margin-left:6px}
+body.day .pick{border-bottom-color:rgba(0,0,0,.1)}
+
+/* 育ち具合 */
+.lvBox{text-align:center;padding:6px 0 2px}
+.lvNo{font-size:56px;font-weight:800;line-height:1;color:var(--amber);font-variant-numeric:tabular-nums}
+.lvNm{font-size:19px;font-weight:800;margin-top:4px}
+.lvBar{height:12px;background:rgba(255,255,255,.09);border-radius:7px;overflow:hidden;margin:14px 0 6px}
+.lvBar i{display:block;height:100%;background:var(--amber);border-radius:7px;transition:width .4s}
+body.day .lvBar{background:rgba(0,0,0,.1)}
+.unl{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.unl:last-child{border-bottom:none}
+.unl .mk{font-size:16px;line-height:1.4}
+.unl .bd{flex:1}
+.unl .bd b{display:block}
+.unl .bd span{font-size:12px;color:var(--muted)}
+.unl.off .bd b{color:var(--muted)}
+.stat.tap{cursor:pointer;position:relative}
+.stat.tap::after{content:"›";position:absolute;right:7px;top:6px;font-size:14px;color:var(--muted)}
+.stat.tap.on{outline:2px solid var(--amber);outline-offset:-2px}
+body.day .unl{border-bottom-color:rgba(0,0,0,.1)}
+
+/* APIキーの案内 */
+.kgStep{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.kgNo{flex:none;width:34px;height:34px;border-radius:50%;background:var(--amber);color:#1A1204;
+  font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center}
+.kgTxt{flex:1;min-width:0}
+.kgTxt b{display:block;font-size:16px;margin-bottom:5px}
+.kgTxt span{font-size:14px;color:var(--muted);line-height:1.8}
+.kgTxt input{font-size:16px}
+
+/* 配達の詳細 */
+.brk{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.brk:last-child{border-bottom:none}
+.brk .k{color:var(--muted);font-size:13px;min-width:6.5em}
+.brk .v{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.bar2{height:7px;background:rgba(255,255,255,.09);border-radius:5px;overflow:hidden;margin-top:5px}
+.bar2 i{display:block;height:100%;border-radius:5px;background:var(--amber)}
+.item.tap{cursor:pointer}
+body.day .brk{border-bottom-color:rgba(0,0,0,.1)}
+body.day .bar2{background:rgba(0,0,0,.1)}
+
+/* 1日の締め */
+.chk{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:14px}
+.chk:last-child{border-bottom:none}
+.chk .mk{font-size:17px;line-height:1.3}
+.chk .bd{flex:1}
+.chk .bd b{display:block;margin-bottom:2px}
+.chk .bd span{font-size:12px;color:var(--muted)}
+body.day .chk{border-bottom-color:rgba(0,0,0,.1)}
+
+/* 日別の収支 */
+.dayRow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.dayRow:last-child{border-bottom:none}
+.dayRow .dh{display:flex;align-items:baseline;gap:8px}
+.dayRow .dd{font-size:15px;font-weight:800}
+.dayRow .dw{font-size:12px;color:var(--muted)}
+.dayRow .dt{margin-left:auto;font-size:20px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
+.dayRow .ds{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
+.dayRow .ds b{color:var(--ink);font-weight:800}
+.dayRow .dx{font-size:13px;margin-top:3px}
+body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -834,22 +941,20 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   <button id="qSave">この束を保存</button>
 
   <div id="qTools">
+    <button id="qMemoBtn">📝 店名</button>
     <button id="wMapBtn">🗺 マップ</button>
     <button id="qCashBtn">💴 釣銭</button>
     <button id="wShotBtn">📸 スクショ</button>
     <button id="qStopBtn">⏹ 中止</button>
   </div>
 
-  <div id="qMemo" class="on">
+  <div id="qMemo">
     <div id="qStores"></div>
     <div class="row">
       <label class="f" style="margin:0"><span>店舗名</span><input id="qkStore" list="storeList" placeholder="店舗名"></label>
       <label class="f" style="margin:0"><span>報酬合計（円）</span><input id="qkFee" type="number" inputmode="numeric" placeholder="600"></label>
     </div>
-    <div class="row" style="margin-top:8px">
-      <button class="btn ghost sm" id="qNoteBtn">🗒 この店のメモ</button>
-      <button class="btn ghost sm" id="qMemoBtn">▾ 隠す</button>
-    </div>
+    <button class="btn ghost sm" id="qNoteBtn" style="margin-top:8px">🗒 この店のメモを見る・書く</button>
   </div>
 
   <div id="qLog"></div>
@@ -1546,7 +1651,7 @@ $("wMapBtn").onclick = ()=>{
 $("wShotBtn").onclick = ()=> $("shFile").click();
 $("qMemoBtn").onclick = ()=>{
   const on = $("qMemo").classList.toggle("on");
-  $("qMemoBtn").textContent = on ? "▾ 隠す" : "▸ 店名・報酬";
+  $("qMemoBtn").classList.toggle("on", on);
   if(on) renderQuickStores();
 };
 
