@@ -285,7 +285,8 @@ nav{grid-template-columns:repeat(2,1fr)}
 }
 #qMemo{display:none;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px}
 #qMemo.on{display:block}
-#qStores{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:11px}
+#qStores{display:none;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:11px;max-height:46vh;overflow-y:auto}
+#qStores.on{display:grid}
 #qStores button{
   border:1px solid var(--qbg);background:transparent;color:var(--ink);
   border-radius:11px;padding:13px 8px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;
@@ -953,6 +954,7 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
   </div>
 
   <div id="qMemo">
+    <button class="btn ghost sm" id="qStoresBtn" style="margin-bottom:10px">▸ よく行く店から選ぶ</button>
     <div id="qStores"></div>
     <div class="row">
       <label class="f" style="margin:0"><span>店舗名</span><input id="qkStore" list="storeList" placeholder="店舗名"></label>
@@ -1658,10 +1660,14 @@ $("wMapBtn").onclick = ()=>{
   else window.open("https://www.google.com/maps", "_blank", "noopener");
 };
 $("wShotBtn").onclick = ()=> $("shFile").click();
+$("qStoresBtn").onclick = ()=>{
+  const on = $("qStores").classList.toggle("on");
+  $("qStoresBtn").textContent = on ? "▾ 店の一覧を隠す" : "▸ よく行く店から選ぶ";
+  if(on) renderQuickStores();
+};
 $("qMemoBtn").onclick = ()=>{
   const on = $("qMemo").classList.toggle("on");
   $("qMemoBtn").classList.toggle("on", on);
-  if(on) renderQuickStores();
 };
 
 /* 画面2からの入口 */
@@ -2410,30 +2416,78 @@ const qCount = t => qk.legs.filter(l=>l.type===t).length;
 const qBusy  = ()=> qk.legs.length>0 || !!qk.cur;
 
 // 選んだサービスの色をワンタップ画面に反映する
-/* 直近に使った店をボタンで出す。走行の合間に文字を打たなくて済むように */
+/* 直近に使った店をボタンで出す。普段は畳んでおく */
 function renderQuickStores(){
   const el = $("qStores");
   const seen = new Set(), names = [];
   [...live()].sort((a,b)=> new Date(b.completedAt)-new Date(a.completedAt)).forEach(e=>{
-    const k = normStore(e.storeName);
+    const k = canonStore(e.storeName);
     if(!k || seen.has(k)) return;
     seen.add(k); names.push(e.storeName);
   });
-  const list = names.slice(0,6);
+  const list = names.slice(0,24);
   if(!list.length){
-    el.innerHTML = `<div class="none">配達を記録すると、よく行く店がここにボタンで並びます</div>`;
+    el.innerHTML = `<div class="none">配達を記録すると、よく行く店がここに並びます</div>`;
     return;
   }
-  const cur = normStore($("qkStore").value);
+  const cur = canonStore($("qkStore").value);
   el.innerHTML = list.map(x=>
-    `<button data-store="${esc(x)}" class="${normStore(x)===cur?"on":""}">${esc(x)}</button>`).join("");
-  el.querySelectorAll("[data-store]").forEach(b=> b.onclick = ()=>{
+    `<button data-store="${esc(x)}" class="${canonStore(x)===cur?"on":""}">${esc(x)}</button>`).join("");
+
+  el.querySelectorAll("[data-store]").forEach(b=>{
     const v = b.dataset.store;
-    // もう一度押したら解除
-    $("qkStore").value = (normStore($("qkStore").value)===normStore(v)) ? "" : v;
-    sndStart(); vibe(15);
-    renderQuickStores(); saveState();
+    b.onclick = ()=>{
+      if(b._long){ b._long = false; return; }      // 長押しの直後は選択しない
+      $("qkStore").value = (canonStore($("qkStore").value)===canonStore(v)) ? "" : v;
+      sndStart(); vibe(15);
+      renderQuickStores(); saveState();
+    };
+    // 長押しで全文を表示し、短い呼び方に変えられるようにする
+    let timer = null;
+    const start = ()=>{ timer = setTimeout(()=>{ b._long = true; askRenameStore(v); }, 550); };
+    const clear = ()=>{ if(timer){ clearTimeout(timer); timer = null; } };
+    b.addEventListener("touchstart", start, {passive:true});
+    b.addEventListener("touchend", clear);
+    b.addEventListener("touchmove", clear);
+    b.addEventListener("mousedown", start);
+    b.addEventListener("mouseup", clear);
+    b.addEventListener("mouseleave", clear);
   });
+}
+
+/* 店名の全文を見せて、自分の呼び方に変えられるようにする */
+function askRenameStore(name){
+  vibe(30); sndEnd();
+  const st = storeStats(name);
+  const v = prompt(`${name}\n\n${st?`記録 ${st.count}件`:"記録なし"}\n\n短い呼び方に変えられます。\n記録・メモ・位置はそのまま引き継ぎます。`, name);
+  if(v === null) return;
+  const nv = v.trim();
+  if(!nv || nv === name) return;
+  const cnt = renameStore(name, nv);
+  toast(`「${nv}」に変えました（${cnt}件）`);
+  renderQuickStores(); saveState();
+}
+/* 店名の変更。過去の記録もまとめて置き換える */
+function renameStore(oldName, newName){
+  const oldKey = canonStore(oldName), newKey = normStore(newName);
+  let cnt = 0;
+  entries.forEach(e=>{ if(canonStore(e.storeName)===oldKey){ e.storeName = newName; cnt++; } });
+  saveEntries();
+  const note = storeNote[oldKey];
+  if(note){
+    const alias = [...new Set([...(note.alias||[]), oldKey])].filter(a=> a!==newKey);
+    const aliasNames = [...new Set([...(note.aliasNames||[]), oldName])].filter(a=> a!==newName);
+    delete storeNote[oldKey];
+    storeNote[newKey] = {...note, name:newName, alias, aliasNames};
+  }else{
+    storeNote[newKey] = {tags:[], text:"", photos:[], name:newName, alias:[oldKey], aliasNames:[oldName]};
+  }
+  const geo = storeGeo[oldKey];
+  if(geo){ delete storeGeo[oldKey]; storeGeo[newKey] = {...geo, name:newName}; }
+  saveNote(); saveGeo();
+  offers.forEach(o=>{ if(normStore(o.storeName)===oldKey) o.storeName = newName; });
+  saveOffer();
+  return cnt;
 }
 
 /* 計測中はどの画面にいても分かるようにする。
