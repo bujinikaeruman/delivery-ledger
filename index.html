@@ -480,6 +480,10 @@ body.day .chk{border-bottom-color:rgba(0,0,0,.1)}
 .dayRow .ds{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
 .dayRow .ds b{color:var(--ink);font-weight:800}
 .dayRow .dx{font-size:13px;margin-top:3px}
+.svcTap{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:5px 9px;margin:3px 4px 0 0;cursor:pointer}
+.svcTap:active{border-color:var(--amber)}
+tr.tapRow{cursor:pointer}
+tr.tapRow:active td{color:var(--amber)}
 body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -975,8 +979,7 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 
 <!-- ===== 画面2：記録 ===== -->
 <section class="view" id="v-rec">
-  <input id="shFile2" type="file" accept="image/*" multiple style="display:none">
-  <button class="btn primary" id="recShot" style="margin-bottom:10px">📸 スクショを読ませる</button>
+  <button class="btn primary" id="recShot" style="margin-bottom:12px">📸 スクショを読ませる</button>
   <div id="recDrafts"></div>
 
   <div class="card">
@@ -987,31 +990,6 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card">
     <h2>日別</h2>
     <div id="dayBox"></div>
-  </div>
-
-  <div class="card">
-    <h2>配達履歴</h2>
-    <div id="histList"></div>
-  </div>
-
-  <div class="card">
-    <h2>店舗別</h2>
-    <div id="anStore"></div>
-  </div>
-
-  <div class="card">
-    <h2>配達先エリア別</h2>
-    <div id="anArea"></div>
-  </div>
-
-  <div class="card">
-    <h2>そのほか</h2>
-    <button class="btn ghost sm" id="recScan" style="margin-bottom:8px">🎯 案件を判定する</button>
-    <button class="btn ghost sm" id="recMoney" style="margin-bottom:8px">💰 クエスト・支出</button>
-    <button class="btn ghost sm" id="recAna" style="margin-bottom:8px">📈 くわしい分析</button>
-    <button class="btn ghost sm" id="recGrow" style="margin-bottom:8px">🌱 育ち具合</button>
-    <button class="btn ghost sm" id="recShare" style="margin-bottom:8px">📤 仲間に送る</button>
-    <button class="btn ghost sm" id="recClose">🏁 今日の締め</button>
   </div>
   <div style="height:12px"></div>
 </section>
@@ -1626,18 +1604,49 @@ $("goQuick").onclick= ()=> openQuick();
 /* ===== 画面2：記録 =====
    収支・履歴・分析をひとつにまとめた画面 */
 function renderRec(){
-  // 未入力の案内
-  const drafts = entries.filter(e=>e.draft).sort((a,b)=> new Date(a.completedAt)-new Date(b.completedAt));
-  $("recDrafts").innerHTML = drafts.length
-    ? `<div class="note warn" style="margin:0 0 12px">報酬が未入力の配達が<b>${drafts.length}件</b>あります。
-       <button class="btn primary sm" id="recFill" style="margin-top:10px">いちばん古いのを入力する</button></div>` : "";
-  if(drafts.length) $("recFill").onclick = ()=>{ loadEntryToForm(drafts[0]); show("add"); };
-
+  const drafts = entries.filter(e=>e.draft).length;
+  $("recDrafts").innerHTML = drafts
+    ? `<div class="note warn" style="margin:0 0 12px">報酬が未入力の配達が<b>${drafts}件</b>あります。
+       <br><span class="label">下の日別からその日を開いて、「未入力」の行をタップすると直せます。</span></div>` : "";
   renderMonth();
   renderDaily();
-  renderHist();
-  renderStoreTable();
-  renderAreaTable();
+}
+
+/* サービス名をタップしたときに出す配達一覧 */
+function openList(title, list){
+  if(!list.length){ toast("記録がありません"); return; }
+  const sorted = [...list].sort((a,b)=> new Date(b.completedAt)-new Date(a.completedAt));
+  const fee = sorted.filter(e=>!e.draft).reduce((a,e)=>a+n(e.feeYen),0);
+  $("detailBody").innerHTML = `
+  <div class="card">
+    <div class="label">${esc(title)}</div>
+    <div class="big green num" style="font-size:30px">${yen(fee)}</div>
+    <div class="label" style="margin-top:4px">${sorted.length}件</div>
+  </div>
+  <div class="card">
+    ${sorted.map(e=>{
+      const t = new Date(e.completedAt);
+      const wait = e.pickupWaitSeconds!=null ? ` ・店待ち${mmss(e.pickupWaitSeconds)}` : "";
+      if(e.draft){
+        return `<div class="item tap" data-open="${e.id}">
+          <div class="m"><div class="nm mut">未入力の配達</div>
+          <div class="sm">${hhmm(t)} ・ ${SVC_NAME[e.service]||""} ・ ${Math.round(totalMinutes(e))}分${wait}</div>
+          <div class="sm" style="margin-top:3px"><span class="badge b-ref">タップで入力</span></div></div></div>`;
+      }
+      return `<div class="item tap" data-open="${e.id}">
+        <div class="m"><div class="nm">${esc(e.storeName)||"（店舗名なし）"}</div>
+        <div class="sm">${hhmm(t)} ・ ${r1(totalKm(e))}km ・ ${Math.round(totalMinutes(e))}分${wait}</div>
+        <div class="sm" style="margin-top:3px">${scoreBadge(score(e))}</div></div>
+        <div class="fee num">${yen(e.feeYen)}</div></div>`;
+    }).join("")}
+  </div>`;
+  $("detailBody").querySelectorAll("[data-open]").forEach(row=> row.onclick = ()=>{
+    const e = entries.find(x=>x.id===row.dataset.open);
+    if(!e) return;
+    if(e.draft){ $("detail").classList.remove("on"); loadEntryToForm(e); show("add"); }
+    else openDetail(e.id);
+  });
+  $("detail").classList.add("on");
 }
 
 /* 画面1の道具ボタン */
@@ -1663,12 +1672,6 @@ $("setGrow").onclick  = ()=>{ $("grow").classList.add("on"); renderGrow(); };
 $("setAi2").onclick   = ()=> show("ai");
 
 $("recShot").onclick  = ()=> $("shFile").click();
-$("recScan").onclick  = ()=> show("scan");
-$("recMoney").onclick = ()=> show("money");
-$("recAna").onclick   = ()=> show("ana");
-$("recGrow").onclick  = ()=>{ $("grow").classList.add("on"); renderGrow(); };
-$("recShare").onclick = openShare;
-$("recClose").onclick = ()=>{ $("close").classList.add("on"); renderClose(); };
 
 /* =========================================================
    今日
@@ -2866,7 +2869,7 @@ function renderMonth(){
   const bySvc = {};
   list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
   const svcRows = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
-    .map(k=>`<tr><td>${SVC_NAME[k]||k}</td><td class="num">${bySvc[k].n}件</td><td class="num green">${yen(bySvc[k].fee)}</td></tr>`).join("");
+    .map(k=>`<tr class="tapRow" data-msvc="${k}"><td>${SVC_NAME[k]||k} <span class="label">›</span></td><td class="num">${bySvc[k].n}件</td><td class="num green">${yen(bySvc[k].fee)}</td></tr>`).join("");
 
   $("monthBox").innerHTML = `
   <div class="label">${new Date().getMonth()+1}月の手取り</div>
@@ -2881,6 +2884,12 @@ function renderMonth(){
       ${ex>0?`<tr><td>支出</td><td class="num red">−${yen(ex)}</td></tr>`:""}
       <tr><td><b>差引</b></td><td class="num"><b>${yen(fee+q-ex)}</b></td></tr>
     </table>` : ""}`;
+
+  $("monthBox").querySelectorAll("[data-msvc]").forEach(r=> r.onclick = ()=>{
+    const k = r.dataset.msvc;
+    openList(`${new Date().getMonth()+1}月 ／ ${SVC_NAME[k]||k}`,
+      entries.filter(e=> monthKey(e.completedAt)===mk && e.service===k));
+  });
 }
 
 /* 日別の収支。サービスごとの件数と金額だけを並べる */
@@ -2902,7 +2911,7 @@ function renderDaily(){
     const bySvc = {};
     list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
     const svc = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
-      .map(x=>`${SVC_NAME[x]||x} <b>${bySvc[x].n}件 ${yen(bySvc[x].fee)}</b>`).join("　／　");
+      .map(x=>`<span class="svcTap" data-day="${k}" data-svc="${x}">${SVC_NAME[x]||x} <b>${bySvc[x].n}件 ${yen(bySvc[x].fee)}</b> ›</span>`).join("　");
     const net = fee + qs - ex;
     return `<div class="dayRow">
       <div class="dh">
@@ -2917,7 +2926,14 @@ function renderDaily(){
         ${ex>0?`<span class="red">支出 −${yen(ex)}</span>`:""}
       </div>` : ""}
     </div>`;
-  }).join("") + `<div class="label" style="margin-top:10px">直近14日ぶん</div>`;
+  }).join("") + `<div class="label" style="margin-top:10px">サービス名をタップすると、その日の配達が出ます（直近14日ぶん）</div>`;
+
+  el.querySelectorAll("[data-svc][data-day]").forEach(x=> x.onclick = ()=>{
+    const dk = x.dataset.day, sv = x.dataset.svc;
+    const d = new Date(dk+"T00:00:00");
+    openList(`${dk.slice(5).replace("-","/")}（${"日月火水木金土"[d.getDay()]}） ／ ${SVC_NAME[sv]||sv}`,
+      entries.filter(e=> dayKey(e.completedAt)===dk && e.service===sv));
+  });
 }
 
 // クエスト追加

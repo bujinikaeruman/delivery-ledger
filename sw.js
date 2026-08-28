@@ -1,6 +1,6 @@
 /* フーデリ採算くん Service Worker
    更新するときは CACHE の版番号（v1 → v2 …）を上げてください */
-const CACHE = "delivery-ledger-v53";
+const CACHE = "delivery-ledger-v54";
 const FILES = ["./", "./index.html", "./manifest.json",
   "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./icon-180.png"];
 
