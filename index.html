@@ -379,17 +379,17 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
 
 
 /* ===== 全画面で開くもの（共通の土台） ===== */
-#share,#note,#grow,#keyGuide,#detail,#close{
+#exp,#share,#note,#grow,#keyGuide,#detail,#close{
   position:fixed;inset:0;background:var(--navy);display:none;flex-direction:column;
   padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
 }
-#share.on,#note.on,#grow.on,#keyGuide.on,#detail.on,#close.on{display:flex}
-#share{z-index:94} #note{z-index:93} #keyGuide{z-index:92} #grow{z-index:91} #close{z-index:89} #detail{z-index:87}
-#swTop,#ntTop,#grTop,#kgTop,#detailTop,#closeTop{
+#exp.on,#share.on,#note.on,#grow.on,#keyGuide.on,#detail.on,#close.on{display:flex}
+#exp{z-index:90} #share{z-index:94} #note{z-index:93} #keyGuide{z-index:92} #grow{z-index:91} #close{z-index:89} #detail{z-index:87}
+#expTop,#swTop,#ntTop,#grTop,#kgTop,#detailTop,#closeTop{
   display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;
 }
-#swTop h2,#ntTop h2,#grTop h2,#kgTop h2,#detailTop h2,#closeTop h2{margin:0;font-size:18px;font-weight:800}
-#swTop button,#ntTop button,#grTop button,#kgTop button,#detailTop button,#closeTop button{
+#expTop h2,#swTop h2,#ntTop h2,#grTop h2,#kgTop h2,#detailTop h2,#closeTop h2{margin:0;font-size:18px;font-weight:800}
+#expTop button,#swTop button,#ntTop button,#grTop button,#kgTop button,#detailTop button,#closeTop button{
   background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;
   padding:11px 16px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;flex:none;
 }
@@ -993,8 +993,20 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
     <h2>日別</h2>
     <div id="dayBox"></div>
   </div>
+
+  <button class="btn ghost" id="recExp" style="margin-bottom:12px">💴 支出帳をひらく</button>
   <div style="height:12px"></div>
 </section>
+
+<!-- ===== 支出帳 ===== -->
+<div id="exp">
+  <div id="expTop">
+    <h2>💴 支出帳</h2>
+    <button id="expX">閉じる</button>
+  </div>
+  <div id="expBody"></div>
+  <div style="height:20px"></div>
+</div>
 
 <!-- スクショ読み取り結果（種類を自動判別） -->
 <div id="shot">
@@ -1602,6 +1614,130 @@ $("goScan").onclick = ()=> show("scan");
 $("goAdd").onclick  = ()=> { resetAddForm(); show("add"); };
 $("goAi").onclick   = ()=> show("ai");
 $("goQuick").onclick= ()=> openQuick();
+
+/* =========================================================
+   支出帳
+   売上とは分けて、支出だけをここでまとめて扱う。
+   月ごとの科目別合計をそのまま申告の下書きに使える。
+   ========================================================= */
+let expMonth = "";     // 表示中の月
+
+function openExp(){
+  expMonth = expMonth || monthKey(new Date());
+  $("exp").classList.add("on");
+  renderExp();
+}
+function renderExp(){
+  const mk = expMonth;
+  const all = [...expenses].sort((a,b)=> new Date(b.purchasedAt)-new Date(a.purchasedAt));
+  const list = all.filter(x=> monthKey(x.purchasedAt)===mk);
+  const total = list.reduce((a,x)=>a+n(x.amountYen),0);
+
+  // 月の一覧（記録がある月）
+  const months = [...new Set(all.map(x=> monthKey(x.purchasedAt)))].sort().reverse();
+  if(!months.includes(mk)) months.unshift(mk);
+
+  // 科目別
+  const byCat = {};
+  list.forEach(x=>{ byCat[x.category] = (byCat[x.category]||0) + n(x.amountYen); });
+  const catRows = Object.keys(CAT_NAME).filter(k=> byCat[k])
+    .sort((a,b)=> byCat[b]-byCat[a])
+    .map(k=>`<tr><td>${CAT_NAME[k]}</td><td class="num red">${yen(byCat[k])}</td></tr>`).join("");
+
+  // その月の売上（参考として並べる）
+  const sales = live().filter(e=> monthKey(e.completedAt)===mk).reduce((a,e)=>a+n(e.feeYen),0);
+
+  $("expBody").innerHTML = `
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn ghost sm" id="expPrev">‹ 前の月</button>
+      <button class="btn ghost sm" id="expNext">次の月 ›</button>
+    </div>
+    <div class="label">${mk.replace("-","年")}月の支出</div>
+    <div class="big red num" style="font-size:34px">${total?"−"+yen(total):"¥0"}</div>
+    <div class="label" style="margin-top:6px">${list.length}件</div>
+  </div>
+
+  <div class="card">
+    <h2>その場で足す</h2>
+    <div class="grid2">
+      <label class="f" style="margin:0"><span>金額（円）</span><input id="exAmt" type="number" inputmode="numeric" placeholder="1500"></label>
+      <label class="f" style="margin:0"><span>内容・店名</span><input id="exName" placeholder="ガソリン"></label>
+    </div>
+    <div id="exCats" class="tags" style="margin-top:10px">
+      ${Object.keys(CAT_NAME).map((k,i)=>`<button class="tg ${i===0?"on":""}" data-cat="${k}">${CAT_NAME[k]}</button>`).join("")}
+    </div>
+    <button class="btn primary sm" id="exAdd" style="margin-top:10px">この支出を足す</button>
+    <button class="btn ghost sm" id="exShot" style="margin-top:8px">📸 レシートを撮って足す</button>
+  </div>
+
+  ${catRows ? `<div class="card">
+    <h2>科目別（申告用）</h2>
+    <table>${catRows}
+      <tr><td><b>合計</b></td><td class="num red"><b>${yen(total)}</b></td></tr>
+    </table>
+    <div class="label" style="margin-top:8px">この月の売上 ${yen(sales)} ／ 差引 <b>${yen(sales-total)}</b></div>
+    <button class="btn ghost sm" id="exCsv" style="margin-top:10px">この月をCSVで書き出す</button>
+  </div>` : ""}
+
+  <div class="card">
+    <h2>明細</h2>
+    ${list.length ? list.map(x=>{
+      const d = new Date(x.purchasedAt);
+      return `<div class="item">
+        <div class="m"><div class="nm">${esc(x.storeName)||CAT_NAME[x.category]}</div>
+        <div class="sm">${d.getMonth()+1}/${d.getDate()} ${hhmm(d)} ・ ${CAT_NAME[x.category]||""}</div></div>
+        <div class="fee out num">−${yen(x.amountYen)}</div>
+        <button class="del" data-ex="${x.id}" aria-label="削除">✕</button>
+      </div>`;
+    }).join("") : `<div class="empty">この月の支出はまだありません</div>`}
+  </div>`;
+
+  const shift = d=>{
+    const [y,m] = mk.split("-").map(Number);
+    const t = new Date(y, m-1+d, 1);
+    expMonth = monthKey(t); renderExp();
+  };
+  $("expPrev").onclick = ()=> shift(-1);
+  $("expNext").onclick = ()=> shift(1);
+
+  let cat = Object.keys(CAT_NAME)[0];
+  $("exCats").querySelectorAll("[data-cat]").forEach(b=> b.onclick = ()=>{
+    cat = b.dataset.cat;
+    $("exCats").querySelectorAll("[data-cat]").forEach(x=> x.classList.toggle("on", x===b));
+  });
+  $("exAdd").onclick = ()=>{
+    const a = n($("exAmt").value);
+    if(a<=0){ toast("金額を入れてください"); return; }
+    expenses.push({
+      id:"e"+Date.now()+Math.random().toString(36).slice(2,5),
+      storeName:$("exName").value.trim(), amountYen:a, category:cat,
+      purchasedAt:new Date().toISOString(), createdAt:new Date().toISOString()
+    });
+    saveExp(); sndSave(); vibe(40);
+    toast(`−${yen(a)} を足しました`);
+    expMonth = monthKey(new Date()); renderExp();
+  };
+  $("exShot").onclick = ()=> $("shFile").click();
+  if($("exCsv")) $("exCsv").onclick = ()=>{
+    const head = "日付,科目,内容,金額";
+    const rows = list.map(x=>{
+      const d = new Date(x.purchasedAt);
+      return [dayKey(d), CAT_NAME[x.category]||x.category,
+        (x.storeName||"").replace(/,/g,"、"), n(x.amountYen)].join(",");
+    });
+    const sum = [`合計,,,${total}`];
+    download(`支出_${mk.replace("-","")}.csv`, "\uFEFF"+[head,...rows,...sum].join("\n"), "text/csv");
+    toast("書き出しました");
+  };
+  $("expBody").querySelectorAll("[data-ex]").forEach(b=> b.onclick = ()=>{
+    if(!confirm("この支出を削除しますか？")) return;
+    expenses = expenses.filter(x=>x.id!==b.dataset.ex);
+    saveExp(); renderExp(); toast("削除しました");
+  });
+}
+$("recExp").onclick = openExp;
+$("expX").onclick   = ()=> $("exp").classList.remove("on");
 
 /* ===== 画面2：記録 =====
    収支・履歴・分析をひとつにまとめた画面 */
@@ -2926,18 +3062,17 @@ function renderMonth(){
     .map(k=>`<tr class="tapRow" data-msvc="${k}"><td>${SVC_NAME[k]||k} <span class="label">›</span></td><td class="num">${bySvc[k].n}件</td><td class="num green">${yen(bySvc[k].fee)}</td></tr>`).join("");
 
   $("monthBox").innerHTML = `
-  <div class="label">${new Date().getMonth()+1}月の手取り</div>
-  <div class="big green num" style="font-size:34px">${yen(fee+q-ex)}</div>
+  <div class="label">${new Date().getMonth()+1}月の売上</div>
+  <div class="big green num" style="font-size:34px">${yen(fee+q)}</div>
   <div class="grid2" style="margin-top:10px">
     <div class="stat"><div class="v num">${list.length}</div><div class="u">件</div></div>
     <div class="stat"><div class="v num">${days}</div><div class="u">稼働日</div></div>
   </div>
   ${svcRows ? `<table style="margin-top:12px">${svcRows}</table>` : `<div class="empty">今月の記録はまだありません</div>`}
-  ${(q>0||ex>0) ? `<table style="margin-top:10px">
-      ${q>0?`<tr><td>クエスト</td><td class="num amber">${yen(q)}</td></tr>`:""}
-      ${ex>0?`<tr><td>支出</td><td class="num red">−${yen(ex)}</td></tr>`:""}
-      <tr><td><b>差引</b></td><td class="num"><b>${yen(fee+q-ex)}</b></td></tr>
-    </table>` : ""}`;
+  ${q>0 ? `<table style="margin-top:10px"><tr><td>うちクエスト</td><td class="num amber">${yen(q)}</td></tr></table>` : ""}
+  ${ex>0 ? `<div class="note info" style="margin-top:12px">
+      支出 <b class="red">−${yen(ex)}</b> ／ 差引 <b>${yen(fee+q-ex)}</b>
+      <br><span class="label">支出は「支出帳」で管理します</span></div>` : ""}`;
 
   $("monthBox").querySelectorAll("[data-msvc]").forEach(r=> r.onclick = ()=>{
     const k = r.dataset.msvc;
@@ -2949,9 +3084,9 @@ function renderMonth(){
 /* 日別の収支。サービスごとの件数と金額だけを並べる */
 function renderDaily(){
   const el = $("dayBox");
+  // 売上の画面なので、配達がある日だけを並べる（支出だけの日は支出帳で見る）
   const byDay = {};
   live().forEach(e=>{ (byDay[dayKey(e.completedAt)] ||= []).push(e); });
-  expenses.forEach(x=>{ (byDay[dayKey(x.purchasedAt)] ||= []); });
 
   const keys = Object.keys(byDay).sort().reverse().slice(0, 14);
   if(!keys.length){ el.innerHTML = `<div class="empty">記録が入るとここに日別で並びます</div>`; return; }
@@ -2966,19 +3101,15 @@ function renderDaily(){
     list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
     const svc = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
       .map(x=>`<span class="svcTap" data-day="${k}" data-svc="${x}">${SVC_NAME[x]||x} <b>${bySvc[x].n}件 ${yen(bySvc[x].fee)}</b> ›</span>`).join("　");
-    const net = fee + qs - ex;
     return `<div class="dayRow">
       <div class="dh">
         <span class="dd">${k.slice(5).replace("-","/")}</span>
         <span class="dw">（${"日月火水木金土"[d.getDay()]}）</span>
-        <span class="dt">${yen(net)}</span>
+        <span class="dt">${yen(fee + qs)}</span>
       </div>
       ${svc ? `<div class="ds">${svc}</div>` : `<div class="ds">配達なし</div>`}
-      ${(qs>0||ex>0) ? `<div class="dx">
-        ${qs>0?`<span class="amber">クエスト ${yen(qs)}</span>`:""}
-        ${(qs>0&&ex>0)?"　":""}
-        ${ex>0?`<span class="red">支出 −${yen(ex)}</span>`:""}
-      </div>` : ""}
+      ${qs>0 ? `<div class="dx"><span class="amber">うちクエスト ${yen(qs)}</span></div>` : ""}
+      ${ex>0 ? `<div class="dx"><span class="label">支出 −${yen(ex)}</span></div>` : ""}
     </div>`;
   }).join("") + `<div class="label" style="margin-top:10px">サービス名をタップすると、その日の配達が出ます（直近14日ぶん）</div>`;
 
@@ -4226,7 +4357,10 @@ function renderShot(r){
       if(!added){ toast("記録するものがありません"); return; }
       saveExp(); sndSave(); vibe(50);
       toast(`${added}件を支出に記録しました（−${yen(total)}）`);
-      shotDone(`${added}件を支出に記録しました（−${yen(total)}）`, "収支の画面を開く", ()=> show("money"));
+      if($("exp").classList.contains("on")) renderExp();   // 支出帳を開いていればその場で反映
+      shotDone(`${added}件を支出に記録しました（−${yen(total)}）`, "支出帳を開く", ()=>{
+        expMonth = monthKey(new Date()); openExp();
+      });
     };
     return;
   }
