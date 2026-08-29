@@ -1742,10 +1742,12 @@ $("expX").onclick   = ()=> $("exp").classList.remove("on");
 /* ===== 画面2：記録 =====
    収支・履歴・分析をひとつにまとめた画面 */
 function renderRec(){
-  const drafts = entries.filter(e=>e.draft).length;
-  $("recDrafts").innerHTML = drafts
-    ? `<div class="note warn" style="margin:0 0 12px">報酬が未入力の配達が<b>${drafts}件</b>あります。
-       <br><span class="label">下の日別からその日を開いて、「未入力」の行をタップすると直せます。</span></div>` : "";
+  const drafts = entries.filter(e=>e.draft);
+  $("recDrafts").innerHTML = drafts.length
+    ? `<div class="note warn" style="margin:0 0 12px">報酬が未入力の配達が<b>${drafts.length}件</b>あります。
+       <br><span class="label">タップで入力、✕で削除できます。</span>
+       <button class="btn primary sm" id="recFixList" style="margin-top:10px">未入力をまとめて見る</button></div>` : "";
+  if(drafts.length) $("recFixList").onclick = ()=> openList("未入力の配達", drafts);
   renderMonth();
   renderDaily();
 }
@@ -1766,16 +1768,18 @@ function openList(title, list){
       const t = new Date(e.completedAt);
       const wait = e.pickupWaitSeconds!=null ? ` ・店待ち${mmss(e.pickupWaitSeconds)}` : "";
       if(e.draft){
-        return `<div class="item tap" data-open="${e.id}">
-          <div class="m"><div class="nm mut">未入力の配達</div>
+        return `<div class="item">
+          <div class="m tap" data-open="${e.id}"><div class="nm mut">未入力の配達</div>
           <div class="sm">${hhmm(t)} ・ ${SVC_NAME[e.service]||""} ・ ${Math.round(totalMinutes(e))}分${wait}</div>
-          <div class="sm" style="margin-top:3px"><span class="badge b-ref">タップで入力</span></div></div></div>`;
+          <div class="sm" style="margin-top:3px"><span class="badge b-ref">タップで入力</span></div></div>
+          <button class="del" data-del="${e.id}" aria-label="削除">✕</button></div>`;
       }
-      return `<div class="item tap" data-open="${e.id}">
-        <div class="m"><div class="nm">${esc(e.storeName)||"（店舗名なし）"}</div>
+      return `<div class="item">
+        <div class="m tap" data-open="${e.id}"><div class="nm">${esc(e.storeName)||"（店舗名なし）"}</div>
         <div class="sm">${hhmm(t)} ・ ${r1(totalKm(e))}km ・ ${Math.round(totalMinutes(e))}分${wait}</div>
         <div class="sm" style="margin-top:3px">${scoreBadge(score(e))}</div></div>
-        <div class="fee num">${yen(e.feeYen)}</div></div>`;
+        <div class="fee num">${yen(e.feeYen)}</div>
+        <button class="del" data-del="${e.id}" aria-label="削除">✕</button></div>`;
     }).join("")}
   </div>`;
   $("detailBody").querySelectorAll("[data-open]").forEach(row=> row.onclick = ()=>{
@@ -1783,6 +1787,20 @@ function openList(title, list){
     if(!e) return;
     if(e.draft){ $("detail").classList.remove("on"); loadEntryToForm(e); show("add"); }
     else openDetail(e.id);
+  });
+  // 分からなければ消せるようにしておく
+  $("detailBody").querySelectorAll("[data-del]").forEach(b=> b.onclick = ev=>{
+    ev.stopPropagation();
+    const e = entries.find(x=>x.id===b.dataset.del);
+    if(!e) return;
+    const nm = e.draft ? "この未入力の記録" : `「${e.storeName||"店舗名なし"}」の記録`;
+    if(!confirm(`${nm}を削除しますか？`)) return;
+    entries = entries.filter(x=>x.id!==b.dataset.del);
+    saveEntries(); sndBad();
+    const rest = list.filter(x=> x.id!==b.dataset.del && entries.some(y=>y.id===x.id));
+    toast("削除しました");
+    if(rest.length) openList(title, rest);
+    else { $("detail").classList.remove("on"); renderRec(); }
   });
   $("detail").classList.add("on");
 }
