@@ -809,29 +809,18 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 <!-- ========== 設定 ========== -->
 <section class="view" id="v-set">
   <div class="card">
-    <h2>自分の目標ライン</h2>
-    <div class="row">
-      <label class="f"><span>受ける（円/時）</span><input id="cfgHrGo" type="number" inputmode="numeric"></label>
-      <label class="f"><span>条件付き（円/時）</span><input id="cfgHrCond" type="number" inputmode="numeric"></label>
-    </div>
-    <div class="row">
-      <label class="f"><span>受ける（円/km）</span><input id="cfgKmGo" type="number" inputmode="numeric"></label>
-      <label class="f"><span>条件付き（円/km）</span><input id="cfgKmCond" type="number" inputmode="numeric"></label>
-    </div>
+    <h2>目安の設定</h2>
     <div class="row">
       <label class="f"><span>長待ち警告（分）</span><input id="cfgWait" type="number" inputmode="numeric"></label>
-      <label class="f"><span>判定に要る件数</span><input id="cfgMin" type="number" inputmode="numeric"></label>
+      <label class="f"><span>平均速度（km/時）</span><input id="cfgSpeed" type="number" inputmode="decimal" step="0.5"></label>
     </div>
-    <label class="f"><span>平均速度（km/時）</span><input id="cfgSpeed" type="number" inputmode="decimal" step="0.5"></label>
     <div class="label" id="speedNote" style="margin:-4px 0 10px"></div>
     <button class="btn primary sm" id="cfgSave">この設定を保存</button>
-    <div class="note info">受注前も保存後のスコアも、この1組の数字だけを見ています。判定と評価が食い違うことはありません。</div>
   </div>
 
   <div class="card">
     <h2>ほかの画面</h2>
-    <button class="btn ghost sm" id="setScan" style="margin-bottom:8px">🎯 案件を判定する</button>
-    <button class="btn ghost sm" id="setMoney" style="margin-bottom:8px">💰 クエスト・支出</button>
+    <button class="btn ghost sm" id="setMoney" style="margin-bottom:8px">🎯 クエスト</button>
     <button class="btn ghost sm" id="setAna" style="margin-bottom:8px">📈 くわしい分析</button>
     <button class="btn ghost sm" id="setGrow" style="margin-bottom:8px">🌱 育ち具合</button>
     <button class="btn ghost sm" id="setAi2">📰 お知らせの要約</button>
@@ -840,10 +829,8 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
   <div class="card">
     <h2>表示</h2>
     <button class="btn ghost sm" id="tglDay" style="margin-bottom:8px">昼モード：オフ</button>
-    <button class="btn ghost sm" id="tglBig" style="margin-bottom:8px">巨大ボタン：オフ</button>
-    <button class="btn ghost sm" id="tglSnd" style="margin-bottom:8px">タップ音：オン</button>
-    <button class="btn ghost sm" id="tglChime">1分ごとのお知らせ：オン</button>
-    <div class="note info">昼モードは直射日光の下でも読める白背景。ヘッダーの🌙／☀でも切り替わります。巨大ボタンはグローブをしたままでも押せるサイズになります。</div>
+    <button class="btn ghost sm" id="tglSnd">タップ音：オン</button>
+    <div class="note info">昼モードは直射日光の下でも読める白背景。ヘッダーの🌙／☀でも切り替わります。</div>
   </div>
 
   <div class="card">
@@ -1238,7 +1225,7 @@ const saveNote    = ()=>{ localStorage.setItem(K_NOTE, JSON.stringify(storeNote)
 /* ---------- 小道具 ---------- */
 const $ = id => document.getElementById(id);
 const n = v => { const x = parseFloat(v); return isFinite(x) ? x : 0; };
-const yen = v => "¥" + Math.round(v).toLocaleString("ja-JP");
+const yen = v => (v<0?"−":"") + "¥" + Math.abs(Math.round(v)).toLocaleString("ja-JP");
 const r1 = v => Math.round(v*10)/10;
 const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -1588,9 +1575,7 @@ function applyDisplay(){
   const m = document.querySelector('meta[name="theme-color"]');
   if(m) m.setAttribute("content", cfg.dayMode ? "#FFFFFF" : "#000000");
   if($("tglDay")) $("tglDay").textContent = "昼モード：" + (cfg.dayMode?"オン":"オフ");
-  if($("tglBig")) $("tglBig").textContent = "巨大ボタン：" + (cfg.bigMode?"オン":"オフ");
   if($("tglSnd")) $("tglSnd").textContent = "タップ音：" + (cfg.sound?"オン":"オフ");
-  if($("tglChime")) $("tglChime").textContent = "1分ごとのお知らせ：" + (cfg.chime?"オン":"オフ");
   if($("tglGps")) $("tglGps").textContent = "位置情報：" + (cfg.useGps?"オン":"オフ");
   if($("estBtn")) $("estBtn").style.display = cfg.useGps ? "block" : "none";
   // AI機能はキーを入れた人にだけ出す（キーが無い人にはボタン自体を見せない）
@@ -1654,7 +1639,7 @@ function renderExp(){
       <button class="btn ghost sm" id="expNext">次の月 ›</button>
     </div>
     <div class="label">${mk.replace("-","年")}月の支出</div>
-    <div class="big red num" style="font-size:34px">${total?"−"+yen(total):"¥0"}</div>
+    <div class="big red num" style="font-size:34px">${yen(total)}</div>
     <div class="label" style="margin-top:6px">${list.length}件</div>
   </div>
 
@@ -1687,7 +1672,7 @@ function renderExp(){
       return `<div class="item">
         <div class="m"><div class="nm">${esc(x.storeName)||CAT_NAME[x.category]}</div>
         <div class="sm">${d.getMonth()+1}/${d.getDate()} ${hhmm(d)} ・ ${CAT_NAME[x.category]||""}</div></div>
-        <div class="fee out num">−${yen(x.amountYen)}</div>
+        <div class="fee out num">${yen(x.amountYen)}</div>
         <button class="del" data-ex="${x.id}" aria-label="削除">✕</button>
       </div>`;
     }).join("") : `<div class="empty">この月の支出はまだありません</div>`}
@@ -1715,7 +1700,7 @@ function renderExp(){
       purchasedAt:new Date().toISOString(), createdAt:new Date().toISOString()
     });
     saveExp(); sndSave(); vibe(40);
-    toast(`−${yen(a)} を足しました`);
+    toast(`${yen(a)} を足しました`);
     expMonth = monthKey(new Date()); renderExp();
   };
   $("exShot").onclick = ()=> $("shFile").click();
@@ -1825,7 +1810,6 @@ $("qMemoBtn").onclick = ()=>{
 };
 
 /* 画面2からの入口 */
-$("setScan").onclick  = ()=> show("scan");
 $("setMoney").onclick = ()=> show("money");
 $("setAna").onclick   = ()=> show("ana");
 $("setGrow").onclick  = ()=>{ $("grow").classList.add("on"); renderGrow(); };
@@ -3055,7 +3039,7 @@ function renderMoney(){
   ee.innerHTML = todayExp.length ? todayExp.map(x=>`<div class="item">
       <div class="m"><div class="nm">${esc(x.storeName)||CAT_NAME[x.category]}</div>
       <div class="sm">${hhmm(new Date(x.purchasedAt))} ・ ${CAT_NAME[x.category]||""}</div></div>
-      <div class="fee out num">−${yen(x.amountYen)}</div>
+      <div class="fee out num">${yen(x.amountYen)}</div>
       <button class="del" data-e="${x.id}" aria-label="削除">✕</button>
     </div>`).join("") : `<div class="empty">今日の支出はまだありません</div>`;
   ee.querySelectorAll("[data-e]").forEach(b=> b.onclick = ()=>{
@@ -3089,7 +3073,7 @@ function renderMonth(){
   ${svcRows ? `<table style="margin-top:12px">${svcRows}</table>` : `<div class="empty">今月の記録はまだありません</div>`}
   ${q>0 ? `<table style="margin-top:10px"><tr><td>うちクエスト</td><td class="num amber">${yen(q)}</td></tr></table>` : ""}
   ${ex>0 ? `<div class="note info" style="margin-top:12px">
-      支出 <b class="red">−${yen(ex)}</b> ／ 差引 <b>${yen(fee+q-ex)}</b>
+      支出 <b class="red">${yen(ex)}</b> ／ 差引 <b>${yen(fee+q-ex)}</b>
       <br><span class="label">支出は「支出帳」で管理します</span></div>` : ""}`;
 
   $("monthBox").querySelectorAll("[data-msvc]").forEach(r=> r.onclick = ()=>{
@@ -3127,7 +3111,7 @@ function renderDaily(){
       </div>
       ${svc ? `<div class="ds">${svc}</div>` : `<div class="ds">配達なし</div>`}
       ${qs>0 ? `<div class="dx"><span class="amber">うちクエスト ${yen(qs)}</span></div>` : ""}
-      ${ex>0 ? `<div class="dx"><span class="label">支出 −${yen(ex)}</span></div>` : ""}
+      ${ex>0 ? `<div class="dx"><span class="label">支出 ${yen(ex)}</span></div>` : ""}
     </div>`;
   }).join("") + `<div class="label" style="margin-top:10px">サービス名をタップすると、その日の配達が出ます（直近14日ぶん）</div>`;
 
@@ -4333,7 +4317,7 @@ function renderShot(r){
     const sum = rcs.reduce((a,x)=>a+n(x.total),0);
     box.innerHTML = shotHead(r) +
       (rcs.length>1 ? `<div class="card"><div class="label">${rcs.length}件のレシート・合計</div>
-        <div class="big red num" style="font-size:34px">−${yen(sum)}</div></div>` : "") +
+        <div class="big red num" style="font-size:34px">${yen(sum)}</div></div>` : "") +
       rcs.map((rc,i)=>{
         const amt = n(rc.total);
         let when = rc.datetime ? new Date(String(rc.datetime).replace(/\//g,"-").replace(" ","T")) : null;
@@ -4374,9 +4358,9 @@ function renderShot(r){
       });
       if(!added){ toast("記録するものがありません"); return; }
       saveExp(); sndSave(); vibe(50);
-      toast(`${added}件を支出に記録しました（−${yen(total)}）`);
+      toast(`${added}件を支出に記録しました（${yen(total)}）`);
       if($("exp").classList.contains("on")) renderExp();   // 支出帳を開いていればその場で反映
-      shotDone(`${added}件を支出に記録しました（−${yen(total)}）`, "支出帳を開く", ()=>{
+      shotDone(`${added}件を支出に記録しました（${yen(total)}）`, "支出帳を開く", ()=>{
         expMonth = monthKey(new Date()); openExp();
       });
     };
@@ -5678,9 +5662,7 @@ $("kgSave").onclick = async ()=>{
 
 function renderSettings(){
   if($("verTag")) $("verTag").textContent = APP_VER;
-  $("cfgHrGo").value=cfg.hrGo; $("cfgHrCond").value=cfg.hrCond;
-  $("cfgKmGo").value=cfg.kmGo; $("cfgKmCond").value=cfg.kmCond;
-  $("cfgWait").value=cfg.waitWarnMin; $("cfgMin").value=cfg.minSamples;
+  $("cfgWait").value=cfg.waitWarnMin;
   $("cfgAiKey").value=cfg.aiKey||""; $("cfgAiModel").value=cfg.aiModel||CFG_DEF.aiModel;
   $("cfgDetour").value = cfg.detour||1.3;
   const u = getUsage();
@@ -5698,7 +5680,6 @@ function renderSettings(){
   applyDisplay();
 }
 $("tglDay").onclick = ()=>{ cfg.dayMode = !cfg.dayMode; saveCfg(); applyDisplay(); };
-$("tglBig").onclick = ()=>{ cfg.bigMode = !cfg.bigMode; saveCfg(); applyDisplay(); };
 $("tglSnd").onclick = ()=>{ cfg.sound = !cfg.sound; saveCfg(); applyDisplay(); if(cfg.sound) sndEnd(); };
 $("estBtn").onclick = estimateToStore;
 $("tglGps").onclick = async ()=>{
@@ -5714,7 +5695,6 @@ $("detSave").onclick = ()=>{
   cfg.detour = (v>=1 && v<=2.5) ? v : 1.3;
   saveCfg(); renderSettings(); toast("補正を保存しました");
 };
-$("tglChime").onclick = ()=>{ cfg.chime = !cfg.chime; saveCfg(); applyDisplay(); if(cfg.chime) sndMinute(1); };
 $("aiSave").onclick = ()=>{
   cfg.aiKey = $("cfgAiKey").value.trim();
   cfg.aiModel = $("cfgAiModel").value.trim() || CFG_DEF.aiModel;
@@ -5722,12 +5702,7 @@ $("aiSave").onclick = ()=>{
   toast(cfg.aiKey ? "キーを保存しました。AI機能が使えます" : "キーを空にしました。AI機能は非表示になります");
 };
 $("cfgSave").onclick = ()=>{
-  cfg.hrGo=n($("cfgHrGo").value)||CFG_DEF.hrGo;
-  cfg.hrCond=n($("cfgHrCond").value)||CFG_DEF.hrCond;
-  cfg.kmGo=n($("cfgKmGo").value)||CFG_DEF.kmGo;
-  cfg.kmCond=n($("cfgKmCond").value)||CFG_DEF.kmCond;
   cfg.waitWarnMin=n($("cfgWait").value)||CFG_DEF.waitWarnMin;
-  cfg.minSamples=Math.max(2,n($("cfgMin").value)||CFG_DEF.minSamples);
   cfg.speedKmh=n($("cfgSpeed").value)||CFG_DEF.speedKmh;
   saveCfg(); toast("設定を保存しました");
 };
