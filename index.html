@@ -260,6 +260,11 @@ nav{grid-template-columns:repeat(2,1fr)}
 #qMark.warn{color:var(--red)}
 
 /* 帯ボタン。次に押すものだけがゆっくり光る */
+#wOfferShot{
+  width:100%;margin-bottom:9px;border:2px dashed var(--qbg);background:transparent;color:var(--qbg);
+  border-radius:14px;padding:13px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;
+}
+#wOfferShot:active{background:rgba(255,255,255,.05)}
 #qBtns{display:flex;flex-direction:column;gap:9px}
 .qbtn{
   border:none;border-radius:14px;min-height:62px;padding:14px 12px;
@@ -923,8 +928,10 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
     <div id="qMark"></div>
   </div>
 
+  <button id="wOfferShot">📸 案件のスクショ</button>
+
   <div id="qBtns">
-    <button id="qAccept" class="qbtn">🚩 案件を受けた</button>
+    <button id="qAccept" class="qbtn">🚩 案件を受ける</button>
     <button id="qPick" class="qbtn">🏪 店に到着</button>
     <button id="qDrop" class="qbtn">🏠 配達先に到着</button>
     <button id="qMain" class="qbtn" style="display:none">受取完了</button>
@@ -1799,6 +1806,36 @@ $("wMapBtn").onclick = ()=>{
   else window.open("https://www.google.com/maps", "_blank", "noopener");
 };
 $("wShotBtn").onclick = ()=> $("shFile").click();
+
+/* 案件のスクショ。読み取ったら、そのまま稼働画面に入れる */
+let offerToWork = false;
+$("wOfferShot").onclick = ()=>{ offerToWork = true; $("shFile").click(); };
+
+/* 読み取った案件を稼働画面へ流し込む */
+function offerIntoWork(o){
+  const sp = ridingSpeed();
+  const km = n(o.km);
+  qk.plan = {
+    storeName: o.store || "",
+    dropArea: cleanArea(o.dropArea||""),
+    dropBuilding: cleanBuilding(o.dropBuilding||""),
+    service: (o.service && SVC_NAME[o.service]) ? o.service : $("qkSvc").value,
+    feeYen: n(o.fee),
+    distanceKm: km,
+    returnDistanceKm: 0,
+    expWaitMin: 0,
+    expDurMin: n(o.minutes) || (km ? Math.round(km/sp.v*60) : 0),
+    expRetMin: 0,
+    at: new Date().toISOString()
+  };
+  if(o.service && SVC_NAME[o.service]) $("qkSvc").value = o.service;
+  if(o.store) $("qkStore").value = o.store;
+  if(n(o.fee) > 0) $("qkFee").value = n(o.fee);
+  applyQuickTheme(); paintQuick(); paintWorkToday(); saveState();
+  show("work");
+  sndEnd(); vibe(40);
+  toast(`${o.store||"案件"} ${n(o.fee)?yen(o.fee):""} を読み込みました`);
+}
 $("qStoresBtn").onclick = ()=>{
   const on = $("qStores").classList.toggle("on");
   $("qStoresBtn").textContent = on ? "▾ 店の一覧を隠す" : "▸ よく行く店から選ぶ";
@@ -4022,10 +4059,19 @@ function shotHead(r){
 
 function renderShot(r){
   const box = $("shotBody");
+  if(r.kind !== "offer") offerToWork = false;
   const km = n(r.km), fee = n(r.fee), mins = n(r.minutes);
 
   if(r.kind==="offer"){
     const list = (r.offers||[]).filter(o=> n(o.fee)>0 || (o.store||"").trim());
+    // 「案件のスクショ」から読んだときは、確認を挟まず稼働画面へ入れる
+    if(offerToWork && list.length===1){
+      offerToWork = false;
+      $("shot").classList.remove("on");
+      offerIntoWork(list[0]);
+      return;
+    }
+    offerToWork = false;
     if(!list.length){
       box.innerHTML = shotHead(r) + `<div class="note warn">案件の内容を読み取れませんでした。報酬と距離が写るように撮り直してください。</div>`;
       return;
