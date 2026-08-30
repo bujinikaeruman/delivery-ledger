@@ -1052,29 +1052,22 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
   </div>
   <div id="kgBody">
     <div class="note info" style="margin-top:0">
-      Googleの「APIキー」という合言葉を1回だけ取れば、スクショ読み取りが使えます。
-      <b>無料です。支払い情報の登録は要りません。</b>所要5分ほど。
+      Googleの「APIキー」という合言葉を1回だけ取れば、スクショの読み取りが使えます。
+      <b>無料です。支払い情報の登録は要りません。</b>
     </div>
 
     <div class="kgStep">
       <div class="kgNo">1</div>
       <div class="kgTxt">
-        <b>下のボタンでページを開く</b>
-        <span>Googleのログインを求められたら、普段のアカウントでログインしてください。</span>
-        <button class="btn primary sm" id="kgOpen" style="margin-top:8px">Googleのページを開く</button>
+        <b>Google AI Studio を開く</b>
+        <span>APIキーの画面へ直接飛びます。Googleアカウントでログインしてください。<br>
+        英語のときは Chrome の「⋮ → 翻訳」、Safari は「ぁあ → 日本語に翻訳」。</span>
+        <button class="btn primary sm" id="kgOpen" style="margin-top:8px">🚀 APIキー画面を開く</button>
       </div>
     </div>
 
     <div class="kgStep">
       <div class="kgNo">2</div>
-      <div class="kgTxt">
-        <b>英語だったら日本語にする</b>
-        <span>Chrome：右上の「⋮」→「翻訳」<br>Safari：アドレスバー左の「ぁあ」→「日本語に翻訳」</span>
-      </div>
-    </div>
-
-    <div class="kgStep">
-      <div class="kgNo">3</div>
       <div class="kgTxt">
         <b>「APIキーを作成」を押す</b>
         <span>英語なら <b>Create API key</b> という青いボタンです。<br>
@@ -1084,20 +1077,20 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
     </div>
 
     <div class="kgStep">
-      <div class="kgNo">4</div>
+      <div class="kgNo">3</div>
       <div class="kgTxt">
-        <b>ここに戻って貼り付ける</b>
-        <span>下の欄を長押し →「貼り付け」。うまくいかないときは「クリップボードから貼る」を押してください。</span>
-        <input id="kgKey" type="text" placeholder="AIza… をここに" style="margin-top:8px">
+        <b>ここに貼って保存する</b>
+        <span>下の枠を長押し →「貼り付け」。うまくいかないときは下のボタンで貼れます。</span>
+        <textarea id="kgKey" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="コピーしたAPIキーをここに貼り付け" style="margin-top:8px;min-height:90px"></textarea>
         <button class="btn ghost sm" id="kgPaste" style="margin-top:8px">クリップボードから貼る</button>
         <button class="btn primary sm" id="kgSave" style="margin-top:8px">保存して使えるようにする</button>
         <div id="kgMsg"></div>
       </div>
     </div>
 
-    <div class="note info">
-      うまくいかないときは、貼った文字が <b>AIza</b> で始まっているか確認してください。
-      前後に余計な空白が入っていても、こちらで取り除きます。
+    <div class="note warn">
+      APIキーはパスワードと同じものです。SNSに貼ったり、スクショに写したりしないでください。
+      このアプリでは<b>この端末の中だけ</b>に保存し、Google以外へは送りません。
     </div>
     <div style="height:20px"></div>
   </div>
@@ -5650,7 +5643,7 @@ $("grX").onclick   = ()=> $("grow").classList.remove("on");
 
 /* APIキーの取り方の案内。
    外部サイトの説明を読ませずに、この画面の指示だけで終わるようにする。 */
-const KEY_URL = "https://aistudio.google.com/apikey";
+const KEY_URL = "https://aistudio.google.com/app/apikey";
 function openKeyGuide(){
   $("kgKey").value = "";
   $("kgMsg").innerHTML = "";
