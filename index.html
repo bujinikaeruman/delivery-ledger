@@ -486,6 +486,16 @@ body.day .chk{border-bottom-color:rgba(0,0,0,.1)}
 .dayRow .ds{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.7}
 .dayRow .ds b{color:var(--ink);font-weight:800}
 .dayRow .dx{font-size:13px;margin-top:3px}
+.monthRow{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.monthRow:last-child{border-bottom:none}
+.monthRow .mm{font-size:15px;font-weight:800}
+.monthRow .mline{display:flex;gap:14px;margin-top:6px}
+.monthRow .mtap{font-size:14px;cursor:pointer}
+.monthRow .mtap.mut{opacity:.4;cursor:default}
+.monthRow .mtap b{font-variant-numeric:tabular-nums}
+.monthRow .mnet{font-size:12px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+.monthRow .mnet.red{color:var(--red)}
+body.day .monthRow{border-bottom-color:rgba(0,0,0,.1)}
 .svcTap{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:5px 9px;margin:3px 4px 0 0;cursor:pointer}
 .svcTap:active{border-color:var(--amber)}
 tr.tapRow{cursor:pointer}
@@ -3080,36 +3090,34 @@ function renderMoney(){
   renderDaily();
 }
 function renderMonth(){
-  const mk = monthKey(new Date());
-  const list = live().filter(e=> monthKey(e.completedAt)===mk);
-  const fee = list.reduce((a,e)=>a+n(e.feeYen),0);
-  const q   = questShareInMonth(mk);
-  const ex  = expenses.filter(x=> monthKey(x.purchasedAt)===mk).reduce((a,x)=>a+n(x.amountYen),0);
-  const days = new Set(list.map(e=>dayKey(e.completedAt))).size;
+  const doneMonths = [...new Set(live().map(e=> monthKey(e.completedAt)))];
+  const expMonths  = [...new Set(expenses.map(x=> monthKey(x.purchasedAt)))];
+  const months = [...new Set([...doneMonths, ...expMonths, monthKey(new Date())])].sort().reverse().slice(0,12);
 
-  // サービスごとの件数と金額
-  const bySvc = {};
-  list.forEach(e=>{ (bySvc[e.service] ||= {n:0, fee:0}); bySvc[e.service].n++; bySvc[e.service].fee += n(e.feeYen); });
-  const svcRows = Object.keys(bySvc).sort((a,b)=> bySvc[b].fee-bySvc[a].fee)
-    .map(k=>`<tr class="tapRow" data-msvc="${k}"><td>${SVC_NAME[k]||k} <span class="label">›</span></td><td class="num">${bySvc[k].n}件</td><td class="num green">${yen(bySvc[k].fee)}</td></tr>`).join("");
+  $("monthBox").innerHTML = months.map(mk=>{
+    const list = live().filter(e=> monthKey(e.completedAt)===mk);
+    const fee = list.reduce((a,e)=>a+n(e.feeYen),0);
+    const q   = questShareInMonth(mk);
+    const ex  = expenses.filter(x=> monthKey(x.purchasedAt)===mk).reduce((a,x)=>a+n(x.amountYen),0);
+    const net = fee + q - ex;
+    const label = mk.replace("-","年") + "月";
+    return `<div class="monthRow">
+      <div class="mm">${esc(label)}</div>
+      <div class="mline">
+        <span class="mtap ${list.length?"":"mut"}" data-msel="${mk}">売上 <b class="green">${yen(fee+q)}</b></span>
+        <span class="mtap ${ex?"":"mut"}" data-mexp="${mk}">支出 <b class="red">${yen(ex)}</b></span>
+      </div>
+      <div class="mnet ${net<0?"red":""}">差引 ${yen(net)}</div>
+    </div>`;
+  }).join("");
 
-  $("monthBox").innerHTML = `
-  <div class="label">${new Date().getMonth()+1}月の売上</div>
-  <div class="big green num" style="font-size:34px">${yen(fee+q)}</div>
-  <div class="grid2" style="margin-top:10px">
-    <div class="stat"><div class="v num">${list.length}</div><div class="u">件</div></div>
-    <div class="stat"><div class="v num">${days}</div><div class="u">稼働日</div></div>
-  </div>
-  ${svcRows ? `<table style="margin-top:12px">${svcRows}</table>` : `<div class="empty">今月の記録はまだありません</div>`}
-  ${q>0 ? `<table style="margin-top:10px"><tr><td>うちクエスト</td><td class="num amber">${yen(q)}</td></tr></table>` : ""}
-  ${ex>0 ? `<div class="note info" style="margin-top:12px">
-      支出 <b class="red">${yen(ex)}</b> ／ 差引 <b>${yen(fee+q-ex)}</b>
-      <br><span class="label">支出は「支出帳」で管理します</span></div>` : ""}`;
-
-  $("monthBox").querySelectorAll("[data-msvc]").forEach(r=> r.onclick = ()=>{
-    const k = r.dataset.msvc;
-    openList(`${new Date().getMonth()+1}月 ／ ${SVC_NAME[k]||k}`,
-      entries.filter(e=> monthKey(e.completedAt)===mk && e.service===k));
+  $("monthBox").querySelectorAll("[data-msel]").forEach(el=> el.onclick = ()=>{
+    const mk = el.dataset.msel;
+    const list = live().filter(e=> monthKey(e.completedAt)===mk);
+    openList(`${mk.replace("-","年")}月の配達`, list);
+  });
+  $("monthBox").querySelectorAll("[data-mexp]").forEach(el=> el.onclick = ()=>{
+    expMonth = el.dataset.mexp; openExp();
   });
 }
 
