@@ -1887,6 +1887,22 @@ function voiceCommands(){
     }},
     {group:"操作", label:"店待ち中の合図", say:"ピック待ち／待ちに入る",
      test:/ピック待ち|待ちに入る/, run:()=> "了解、店待ちですね"},
+    // 「次」は、聞き取りに失敗しても迷わず使える保険。
+    // 画面で今ゆっくり光っているボタンをそのまま押す。
+    {group:"操作", label:"次へ進む", say:"次／つぎ",
+     test:/^次$|^つぎ$|次へ|次お願い/, run:()=>{
+      const btn = document.querySelector("#qBtns .qbtn.next");
+      if(!btn) return "今は何も待っていません";
+      const label = btn.textContent.trim();
+      btn.click();
+      return `「${label}」を押しました`;
+    }},
+    {group:"操作", label:"ひとつ戻る", say:"戻る／もどる",
+     test:/^戻る$|^もどる$|一つ戻|ひとつ戻|押し間違い/, run:()=>{
+      if(!qBusy()){ return "戻る記録がありません"; }
+      $("qUndo").click();
+      return "ひとつ戻しました";
+    }},
     {group:"操作", label:"保存する", say:"保存して／記録して",
      test:/保存|記録して|セーブ/, run:()=>{
       if($("qSave").style.display!=="none"){ $("qSave").click(); return "保存しました"; }
