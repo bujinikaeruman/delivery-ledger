@@ -1913,13 +1913,84 @@ function voiceCommands(){
   ];
 }
 
+/* 分からなかったときに、店名として聞き返す一問一答。
+   決まった順番でしか進まない簡単なやり取り。途中で違うことを喋られると崩れる。 */
+let voiceAsk = null;   // {step, data:{store,km,fee}} / null なら通常モード
+
+function numFromSay(said){
+  const m = String(said).replace(/[，,]/g,"").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
+function isYes(said){ return /はい|うん|そう|お願い|お k|オーケー|了解/.test(said); }
+function isNo(said){ return /いい?え|違う|ちがう|やり直|訂正/.test(said); }
+
+function askStep(step, storeName){
+  voiceAsk = {step, data: voiceAsk ? voiceAsk.data : {store: storeName}};
+  const q = {
+    km:   `${voiceAsk.data.store}を店名として記録します。距離は何キロですか？`,
+    fee:  "距離を記録しました。報酬はいくらですか？",
+    ok:   ()=> `報酬を記録しました。${voiceAsk.data.store}、距離${voiceAsk.data.km}キロ、報酬${voiceAsk.data.fee}円。これで保存しますか？`
+  };
+  voiceAsk.step = step;
+  const text = typeof q[step]==="function" ? q[step]() : q[step];
+  sayResult(text);
+}
+
+function handleVoiceAsk(said){
+  if(!voiceAsk) return false;
+
+  if(voiceAsk.step === "confirm_store"){
+    if(isYes(said)){ askStep("km"); return true; }
+    if(isNo(said)){ voiceAsk = null; sayResult("やめました"); return true; }
+    sayResult("店名として記録してよければ「はい」、違えば「いいえ」と言ってください");
+    return true;
+  }
+  if(voiceAsk.step === "km"){
+    const v = numFromSay(said);
+    if(v == null || !/キロ|km/.test(said)){ sayResult("距離が聞き取れませんでした。「1.8キロ」のように言ってください"); return true; }
+    voiceAsk.data.km = v; askStep("fee"); return true;
+  }
+  if(voiceAsk.step === "fee"){
+    const v = numFromSay(said);
+    if(v == null || !/円/.test(said)){ sayResult("報酬が聞き取れませんでした。「750円」のように言ってください"); return true; }
+    voiceAsk.data.fee = v; askStep("ok"); return true;
+  }
+  if(voiceAsk.step === "ok"){
+    if(isYes(said)){
+      const d = voiceAsk.data;
+      $("qkStore").value = d.store;
+      $("qkFee").value = d.fee;
+      qk.plan = {storeName:d.store, dropArea:"", dropBuilding:"", service:$("qkSvc").value,
+        feeYen:d.fee, distanceKm:d.km, returnDistanceKm:0, expWaitMin:0,
+        expDurMin:Math.round(d.km/ridingSpeed().v*60), expRetMin:0, at:new Date().toISOString()};
+      paintQuick(); saveState();
+      sayResult(`${d.store}の案件を用意しました。「案件を受けた」で計測を始められます`);
+      voiceAsk = null;
+      return true;
+    }
+    if(isNo(said)){ askStep("km"); return true; }     // 違えば距離からやり直し
+    sayResult("この内容でよければ「はい」、違えば「いいえ」と言ってください");
+    return true;
+  }
+  return false;
+}
+
 function matchVoice(said){
+  if(handleVoiceAsk(said)) return null;   // すでにsayResultで応答済みなので二重に喋らせない
+
   const cmds = voiceCommands();
   for(const c of cmds){
     if(c.test.test(said)){
       const r = c.run(said);
-      if(r) return r;         // nullなら今の状態では実行できないので、次の候補を試す
+      if(r) return r;
     }
+  }
+  // どのコマンドにも当たらない場合。
+  // 前の束の計測が終わっていて（qk.cur も qk.legs も無い）、まだ案件を受けていない
+  // タイミングなら、店名として聞き返す。店舗名欄は前回のぶんが残っていることがあるので条件には使わない。
+  if(!qk.cur && !qBusy() && said.length>=2 && said.length<=20){
+    askStep("confirm_store", said);
+    return null;
   }
   return null;
 }
@@ -1957,9 +2028,14 @@ function startMic(){
     const now = Date.now();
     if(said === lastSaid && now - lastAt < 3000) return;
     lastSaid = said; lastAt = now;
+    const inAsk = !!voiceAsk;
     const r = matchVoice(said);
     if(r){ sndEnd(); vibe(30); sayResult(r); }
-    else { sayResult(`「${said}」は分かりませんでした`); }
+    else if(!inAsk && !voiceAsk){
+      // 一問一答の中でも、店名の聞き返し開始時でもなければ、素直に分からなかったと伝える
+      sayResult(`「${said}」は分かりませんでした`);
+    }
+    // voiceAsk が動いている間は handleVoiceAsk 側で sayResult 済みなので、ここでは何もしない
   };
   mic.onerror = (ev)=>{
     if(ev.error === "not-allowed"){ toast("マイクの使用が許可されていません"); stopMic(); }
