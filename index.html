@@ -260,11 +260,20 @@ nav{grid-template-columns:repeat(2,1fr)}
 #qMark.warn{color:var(--red)}
 
 /* 帯ボタン。次に押すものだけがゆっくり光る */
-#wOfferShot{
-  width:100%;margin-bottom:9px;border:2px dashed var(--qbg);background:transparent;color:var(--qbg);
-  border-radius:14px;padding:13px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;
+#wOfferShot,#wMic{
+  border:2px dashed var(--qbg);background:transparent;color:var(--qbg);
+  border-radius:14px;padding:13px;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer;width:100%;
 }
-#wOfferShot:active{background:rgba(255,255,255,.05)}
+#wOfferShot:active,#wMic:active{background:rgba(255,255,255,.05)}
+#wMic.listening{
+  background:var(--red);border-color:var(--red);color:#fff;
+  animation:micPulse 1.2s ease-in-out infinite;
+}
+@keyframes micPulse{0%,100%{opacity:1}50%{opacity:.55}}
+#wMicSay{
+  text-align:center;font-size:13px;color:var(--muted);min-height:20px;margin:6px 0 0;
+}
+#wMicSay b{color:var(--ink)}
 #qBtns{display:flex;flex-direction:column;gap:9px}
 .qbtn{
   border:none;border-radius:14px;min-height:62px;padding:14px 12px;
@@ -936,9 +945,13 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
     <div id="qElapsed" class="num">0:00</div>
     <div id="qHint">案件を受けたら押す</div>
     <div id="qMark"></div>
+  <div id="wMicSay"></div>
   </div>
 
-  <button id="wOfferShot">📸 案件のスクショ</button>
+  <div class="row" style="margin-bottom:9px">
+    <button id="wOfferShot" style="flex:2">📸 案件のスクショ</button>
+    <button id="wMic" style="flex:1">🎙 音声</button>
+  </div>
 
   <div id="qBtns">
     <button id="qAccept" class="qbtn">🚩 案件を受ける</button>
@@ -1809,6 +1822,148 @@ $("wMapBtn").onclick = ()=>{
   else window.open("https://www.google.com/maps", "_blank", "noopener");
 };
 $("wShotBtn").onclick = ()=> $("shFile").click();
+
+/* =========================================================
+   音声入力
+   決まった言い回しを聞き取って、稼働画面のボタン操作に変換する。
+   長い自然文の理解はしない。単語の一致だけで動かす。
+   Chromeの音声認識はGoogleのサーバーに送られる（オフライン不可）。
+   ========================================================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let mic = null, micOn = false;
+
+// 「フレーズ → やること」の対応表。上から順に、最初に一致したものを実行する
+function voiceCommands(){
+  return [
+    // 受注・移動
+    {test:/受け(た|ます)|オファー|案件を受/, run:()=>{
+      if(!qBusy() && !qk.cur){ $("qAccept").click(); return "案件を受けました"; }
+      return null;
+    }},
+    // 到着（店・配達先の順番はボタン側の状態で自動判定）
+    {test:/(店|お店).*到着|到着.*(店|お店)/, run:()=>{
+      if($("qPick").style.display!=="none"){ $("qPick").click(); return "店に到着、と記録しました"; }
+      return null;
+    }},
+    {test:/(配達先|お届け先|届け先).*到着|到着.*(配達先|お届け先|届け先)/, run:()=>{
+      if($("qDrop").style.display!=="none"){ $("qDrop").click(); return "配達先に到着、と記録しました"; }
+      return null;
+    }},
+    // 「向かう」は移動の合図なので、状況から店/配達先どちらかを推測する
+    {test:/向か(う|います)/, run:()=>{
+      if(!qBusy() && !qk.cur){ $("qAccept").click(); return "案件を受けました"; }
+      return null;
+    }},
+    // 完了（ピック待ち中か受渡中かで自動判定）
+    {test:/ピック(完了|できた|終わ)|受取(完了|できた|終わ)|(商品|品物).*(受け取|もらった)/, run:()=>{
+      if(qk.cur && qk.cur.type==="P"){ $("qMain").click(); return "受取完了、と記録しました"; }
+      return null;
+    }},
+    {test:/お届け(完了|できた|終わ)|届け(完了|できた|終わ)|渡(せた|し終)|受渡(完了|できた)/, run:()=>{
+      if(qk.cur && qk.cur.type==="D"){ $("qMain").click(); return "受渡完了、と記録しました"; }
+      return null;
+    }},
+    {test:/ピック待ち|待ちに入る/, run:()=> "了解、店待ちですね"},
+    // 保存
+    {test:/保存|この束を?保存|記録して/, run:()=>{
+      if($("qSave").style.display!=="none"){ $("qSave").click(); return "保存しました"; }
+      return null;
+    }},
+    // 中止
+    {test:/中止|やめる|キャンセルする/, run:()=>{
+      if(qBusy()){ $("qStopBtn").click(); return "計測をやめる画面を開きました"; }
+      return null;
+    }},
+    // 道具を開く
+    {test:/マップ|地図/, run:()=>{ $("wMapBtn").click(); return "マップを開きます"; }},
+    {test:/釣り?銭|お釣り/, run:()=>{ $("qCashBtn").click(); return "お釣り計算を開きます"; }},
+    {test:/スクショ|写真を読ま/, run:()=>{ $("wOfferShot").click(); return "スクショを選んでください"; }},
+    // 店の実績を聞く（「◯◯、何分待った？」のように店名＋質問語）
+    {test:/(何分待|待ち時間|待ち何分)/, run:(said)=>{
+      const nm = $("qkStore").value.trim() || (qk.plan && qk.plan.storeName) || "";
+      if(!nm) return "今どの店か分からないので、先に店名を入れてください";
+      const st = storeStats(nm);
+      if(!st || st.waitAllN < cfg.minSamples) return `${nm}は、まだ待ち時間の記録が足りません`;
+      return `${nm}の平均は、${Math.round(st.waitAll)}分です`;
+    }},
+    {test:/何回目|何件目/, run:()=>{
+      const nm = $("qkStore").value.trim() || (qk.plan && qk.plan.storeName) || "";
+      if(!nm) return "今どの店か分からないので、先に店名を入れてください";
+      const st = storeStats(nm);
+      return st ? `${nm}は、これまで${st.count}回です` : `${nm}は、今回が初めてです`;
+    }},
+    {test:/入り?口|入口はどこ|入場/, run:()=>{
+      const nm = $("qkStore").value.trim() || (qk.plan && qk.plan.storeName) || "";
+      const nt = nm ? getNote(nm) : null;
+      if(nt && nt.text) return nt.text;
+      if(nt && nt.tags && nt.tags.length) return nt.tags.join("、");
+      return nm ? `${nm}のメモは、まだありません` : "今どの店か分からないので、先に店名を入れてください";
+    }},
+    {test:/何階/, run:()=>{
+      const nm = $("qkStore").value.trim() || (qk.plan && qk.plan.storeName) || "";
+      const nt = nm ? getNote(nm) : null;
+      if(nt && /階/.test(nt.text||"")) return nt.text;
+      return "階数のメモは、まだありません";
+    }},
+  ];
+}
+
+function matchVoice(said){
+  const cmds = voiceCommands();
+  for(const c of cmds){
+    if(c.test.test(said)){
+      const r = c.run(said);
+      if(r) return r;         // nullなら今の状態では実行できないので、次の候補を試す
+    }
+  }
+  return null;
+}
+
+function sayResult(text){
+  $("wMicSay").innerHTML = `<b>${esc(text)}</b>`;
+  // 読み上げにも対応していれば、声でも返す
+  try{
+    if(window.speechSynthesis){
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ja-JP"; u.rate = 1.05;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }
+  }catch(e){}
+}
+
+function startMic(){
+  if(!SR){ toast("この端末・ブラウザは音声入力に対応していません"); return; }
+  if(mic){ try{ mic.abort(); }catch(e){} }
+  mic = new SR();
+  mic.lang = "ja-JP";
+  mic.continuous = true;
+  mic.interimResults = false;
+  mic.onresult = (ev)=>{
+    const said = ev.results[ev.results.length-1][0].transcript.trim();
+    if(!said) return;
+    const r = matchVoice(said);
+    if(r){ sndEnd(); vibe(30); sayResult(r); }
+    else { sayResult(`「${said}」は分かりませんでした`); }
+  };
+  mic.onerror = (ev)=>{
+    if(ev.error === "not-allowed"){ toast("マイクの使用が許可されていません"); stopMic(); }
+    else if(ev.error === "no-speech"){ /* 無音は無視して続ける */ }
+    else if(ev.error !== "aborted"){ /* 一時的なエラーは再開で吸収する */ }
+  };
+  mic.onend = ()=>{ if(micOn){ try{ mic.start(); }catch(e){} } };  // 切れても自動で聞き直す
+  try{ mic.start(); micOn = true; $("wMic").classList.add("listening"); $("wMic").textContent = "🎙 停止";
+       $("wMicSay").innerHTML = `<b>聞いています…</b>`; }
+  catch(e){ toast("マイクを開始できませんでした"); }
+}
+function stopMic(){
+  micOn = false;
+  if(mic){ try{ mic.stop(); }catch(e){} }
+  $("wMic").classList.remove("listening"); $("wMic").textContent = "🎙 音声";
+  $("wMicSay").innerHTML = "";
+}
+$("wMic").onclick = ()=> micOn ? stopMic() : startMic();
+// 画面を離れたら聞き取りを止める（電池と誤爆の対策）
+document.querySelectorAll("nav button").forEach(b=> b.addEventListener("click", ()=>{ if(b.dataset.v!=="work") stopMic(); }));
 
 /* 案件のスクショ。読み取ったら、そのまま稼働画面に入れる */
 let offerToWork = false;
