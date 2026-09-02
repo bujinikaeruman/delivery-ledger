@@ -1931,7 +1931,7 @@ function sayResult(text){
   // 止めないと、自分が喋った返事をマイク自身が拾って再認識し、
   // 「分かりませんでした」が延々と積み重なっていく。
   try{
-    if(window.speechSynthesis){
+    if("speechSynthesis" in window){
       const wasOn = micOn;
       if(wasOn && mic){ try{ mic.abort(); }catch(e){} }
       const u = new SpeechSynthesisUtterance(text);
@@ -1981,12 +1981,20 @@ function stopMic(){
   $("wMicSay").innerHTML = "";
 }
 $("wMic").onclick = ()=> micOn ? stopMic() : startMic();
-if(SR && window.speechSynthesis){
+// 声の読み上げは対応端末が多いので、SRが使える時点でひとまず表示しておく。
+// 実際に押したときに使えなければ、そこでエラーにして案内する。
+if(SR){
   $("wMicSpeak").style.display = "block";
   $("wMicSpeak").textContent = "🔈 声の返事：" + (cfg.voiceSpeak?"オン":"オフ");
   $("wMicSpeak").onclick = ()=>{
+    // オンオフの切り替えは無条件で行う。実際に読み上げが使えるかは、
+    // 使う瞬間（sayResult側）でその都度チェックする。
     cfg.voiceSpeak = !cfg.voiceSpeak; saveCfg();
     $("wMicSpeak").textContent = "🔈 声の返事：" + (cfg.voiceSpeak?"オン":"オフ");
+    sndStart(); vibe(15);
+    if(cfg.voiceSpeak && !window.speechSynthesis){
+      toast("この端末では声の読み上げに対応していないかもしれません");
+    }
   };
 }
 // 画面を離れたら聞き取りを止める（電池と誤爆の対策）
