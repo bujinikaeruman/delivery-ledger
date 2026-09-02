@@ -274,6 +274,10 @@ nav{grid-template-columns:repeat(2,1fr)}
   text-align:center;font-size:13px;color:var(--muted);min-height:20px;margin:6px 0 0;
 }
 #wMicSay b{color:var(--ink)}
+#wMicSpeak{
+  width:100%;margin-top:6px;border:1px solid var(--line);background:transparent;color:var(--muted);
+  border-radius:10px;padding:8px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;
+}
 #qBtns{display:flex;flex-direction:column;gap:9px}
 .qbtn{
   border:none;border-radius:14px;min-height:62px;padding:14px 12px;
@@ -946,6 +950,7 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
     <div id="qHint">案件を受けたら押す</div>
     <div id="qMark"></div>
   <div id="wMicSay"></div>
+  <button id="wMicSpeak" style="display:none">🔈 声の返事：オフ</button>
   </div>
 
   <div class="row" style="margin-bottom:9px">
@@ -1210,7 +1215,7 @@ const CAT_NAME = {fuel:"燃料・充電",food:"食事",convenience:"コンビニ
 const CFG_DEF = {
   seenGuide:false,
   hrGo:1500, hrCond:1100, kmGo:300, kmCond:220, waitWarnMin:8, minSamples:2,
-  dayMode:false, bigMode:false, sound:true, chime:true, closedOn:"", useGps:false, detour:1.3, aiKey:"", aiModel:"gemini-3.5-flash", speedKmh:20
+  dayMode:false, bigMode:false, sound:true, chime:true, closedOn:"", useGps:false, detour:1.3, voiceSpeak:false, aiKey:"", aiModel:"gemini-3.5-flash", speedKmh:20
 };
 
 let entries = [], quests = [], expenses = [], aiNotes = [], summaries = [], losses = [], offers = [], cfg = {...CFG_DEF};
@@ -1921,11 +1926,17 @@ function matchVoice(said){
 
 function sayResult(text){
   $("wMicSay").innerHTML = `<b>${esc(text)}</b>`;
-  // 読み上げにも対応していれば、声でも返す
+  if(!cfg.voiceSpeak) return;   // 既定では画面表示だけ。声で返すのはオンにした人だけ
+  // 読み上げている間はマイクを止める。
+  // 止めないと、自分が喋った返事をマイク自身が拾って再認識し、
+  // 「分かりませんでした」が延々と積み重なっていく。
   try{
     if(window.speechSynthesis){
+      const wasOn = micOn;
+      if(wasOn && mic){ try{ mic.abort(); }catch(e){} }
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "ja-JP"; u.rate = 1.05;
+      u.onend = u.onerror = ()=>{ if(wasOn && micOn){ setTimeout(()=>{ try{ mic.start(); }catch(e){} }, 250); } };
       speechSynthesis.cancel(); speechSynthesis.speak(u);
     }
   }catch(e){}
@@ -1938,9 +1949,14 @@ function startMic(){
   mic.lang = "ja-JP";
   mic.continuous = true;
   mic.interimResults = false;
+  let lastSaid = "", lastAt = 0;
   mic.onresult = (ev)=>{
     const said = ev.results[ev.results.length-1][0].transcript.trim();
     if(!said) return;
+    // 同じ発話が短時間で繰り返されたら、聞き間違いの重複として無視する
+    const now = Date.now();
+    if(said === lastSaid && now - lastAt < 3000) return;
+    lastSaid = said; lastAt = now;
     const r = matchVoice(said);
     if(r){ sndEnd(); vibe(30); sayResult(r); }
     else { sayResult(`「${said}」は分かりませんでした`); }
@@ -1950,7 +1966,10 @@ function startMic(){
     else if(ev.error === "no-speech"){ /* 無音は無視して続ける */ }
     else if(ev.error !== "aborted"){ /* 一時的なエラーは再開で吸収する */ }
   };
-  mic.onend = ()=>{ if(micOn){ try{ mic.start(); }catch(e){} } };  // 切れても自動で聞き直す
+  mic.onend = ()=>{
+    // 読み上げのために自分で止めたときは、sayResult側が再開するのでここでは何もしない
+    if(micOn && !speechSynthesis.speaking){ try{ mic.start(); }catch(e){} }
+  };
   try{ mic.start(); micOn = true; $("wMic").classList.add("listening"); $("wMic").textContent = "🎙 停止";
        $("wMicSay").innerHTML = `<b>聞いています…</b>`; }
   catch(e){ toast("マイクを開始できませんでした"); }
@@ -1962,6 +1981,14 @@ function stopMic(){
   $("wMicSay").innerHTML = "";
 }
 $("wMic").onclick = ()=> micOn ? stopMic() : startMic();
+if(SR && window.speechSynthesis){
+  $("wMicSpeak").style.display = "block";
+  $("wMicSpeak").textContent = "🔈 声の返事：" + (cfg.voiceSpeak?"オン":"オフ");
+  $("wMicSpeak").onclick = ()=>{
+    cfg.voiceSpeak = !cfg.voiceSpeak; saveCfg();
+    $("wMicSpeak").textContent = "🔈 声の返事：" + (cfg.voiceSpeak?"オン":"オフ");
+  };
+}
 // 画面を離れたら聞き取りを止める（電池と誤爆の対策）
 document.querySelectorAll("nav button").forEach(b=> b.addEventListener("click", ()=>{ if(b.dataset.v!=="work") stopMic(); }));
 
