@@ -409,7 +409,7 @@ body.day .chg{border-bottom-color:rgba(0,0,0,.1)}
   padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;
 }
 #vcmd.on,#exp.on,#share.on,#note.on,#grow.on,#keyGuide.on,#detail.on,#close.on{display:flex}
-#exp{z-index:90} #share{z-index:94} #note{z-index:93} #keyGuide{z-index:92} #grow{z-index:91} #close{z-index:89} #detail{z-index:87}
+#exp{z-index:90} #share{z-index:94} #note{z-index:93} #keyGuide{z-index:92} #grow{z-index:91} #close{z-index:89} #detail{z-index:87} #vcmd{z-index:86}
 #vcTop,#expTop,#swTop,#ntTop,#grTop,#kgTop,#detailTop,#closeTop{
   display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;
 }
@@ -1861,49 +1861,49 @@ function voiceCommands(){
   return [
     // 受注・移動
     {group:"操作", label:"案件を受ける", say:"案件を受けた／受けます／向かう",
-     test:/受け(た|ます)|オファー|案件を受|向か(う|います)/, run:()=>{
+     test:/受け(た|ます|る)|オファー|[おオ]ファー|案件.{0,3}受|向か(う|います|う?よ)/, run:()=>{
       if(!qBusy() && !qk.cur){ $("qAccept").click(); return "案件を受けました"; }
       return null;
     }},
     {group:"操作", label:"店に到着", say:"店に到着／お店到着",
-     test:/(店|お店).*到着|到着.*(店|お店)/, run:()=>{
+     test:/(店|お店).{0,4}到着|到着.{0,4}(店|お店)/, run:()=>{
       if($("qPick").style.display!=="none"){ $("qPick").click(); return "店に到着、と記録しました"; }
       return null;
     }},
     {group:"操作", label:"配達先に到着", say:"配達先に到着／お届け先到着",
-     test:/(配達先|お届け先|届け先).*到着|到着.*(配達先|お届け先|届け先)/, run:()=>{
+     test:/(配達先|お?届け先).{0,4}到着|到着.{0,4}(配達先|お?届け先)/, run:()=>{
       if($("qDrop").style.display!=="none"){ $("qDrop").click(); return "配達先に到着、と記録しました"; }
       return null;
     }},
     {group:"操作", label:"受取完了", say:"ピック完了／受取完了",
-     test:/ピック(完了|できた|終わ)|受取(完了|できた|終わ)|(商品|品物).*(受け取|もらった)/, run:()=>{
+     test:/(ぴっく|ピック).{0,3}(完了|かんりょう|[でデ]きた|終わ)|受[け取り]*.{0,3}(完了|できた|終わ|ました)|(商品|品物|お店).{0,4}(受[けとり]{1,3}|もら[いっ]た|貰った)/, run:()=>{
       if(qk.cur && qk.cur.type==="P"){ $("qMain").click(); return "受取完了、と記録しました"; }
       return null;
     }},
     {group:"操作", label:"受渡完了", say:"お届け完了／渡せた",
-     test:/お届け(完了|できた|終わ)|届け(完了|できた|終わ)|渡(せた|し終)|受渡(完了|できた)/, run:()=>{
+     test:/お?届け.{0,3}(完了|[でデ]きた|終わ|ました)|渡(せた|し終|しました|せました)|受渡.{0,3}(完了|[でデ]きた)/, run:()=>{
       if(qk.cur && qk.cur.type==="D"){ $("qMain").click(); return "受渡完了、と記録しました"; }
       return null;
     }},
     {group:"操作", label:"店待ち中の合図", say:"ピック待ち／待ちに入る",
      test:/ピック待ち|待ちに入る/, run:()=> "了解、店待ちですね"},
     {group:"操作", label:"保存する", say:"保存して／記録して",
-     test:/保存|この束を?保存|記録して/, run:()=>{
+     test:/保存|記録して|セーブ/, run:()=>{
       if($("qSave").style.display!=="none"){ $("qSave").click(); return "保存しました"; }
       return null;
     }},
     {group:"操作", label:"中止する", say:"中止／やめる",
-     test:/中止|やめる|キャンセルする/, run:()=>{
+     test:/中止|やめる|キャンセル/, run:()=>{
       if(qBusy()){ $("qStopBtn").click(); return "計測をやめる画面を開きました"; }
       return null;
     }},
     // 道具を開く
     {group:"道具", label:"マップを開く", say:"マップ／地図",
-     test:/マップ|地図/, run:()=>{ $("wMapBtn").click(); return "マップを開きます"; }},
+     test:/マップ|地図(開|出)/, run:()=>{ $("wMapBtn").click(); return "マップを開きます"; }},
     {group:"道具", label:"お釣り計算", say:"釣銭／お釣り",
-     test:/釣り?銭|お釣り/, run:()=>{ $("qCashBtn").click(); return "お釣り計算を開きます"; }},
+     test:/釣[銭り]|お釣り/, run:()=>{ $("qCashBtn").click(); return "お釣り計算を開きます"; }},
     {group:"道具", label:"案件のスクショ", say:"スクショ／写真を読ませて",
-     test:/スクショ|写真を読ま/, run:()=>{ $("wOfferShot").click(); return "スクショを選んでください"; }},
+     test:/スクショ|写真.{0,4}読ま/, run:()=>{ $("wOfferShot").click(); return "スクショを選んでください"; }},
     // 店の実績を聞く（「◯◯、何分待った？」のように店名＋質問語）
     {group:"質問", label:"店待ち時間を聞く", say:"何分待った？／待ち時間は？",
      test:/(何分待|待ち時間|待ち何分)/, run:(said)=>{
@@ -2000,7 +2000,15 @@ function handleVoiceAsk(said){
   return false;
 }
 
-function matchVoice(said){
+// 区切りの読点・スペースが単語の途中に紛れ込むことがあるので取り除く。
+// 「ピック」のような外来語がひらがなで返る揺れは、各コマンド側の正規表現で
+// カタカナ・ひらがな両方を書いて吸収する（ここで一律変換すると送り仮名まで壊れるため）。
+function normSpeech(said){
+  return String(said||"").trim().replace(/[、，,\s]+/g, "");
+}
+
+function matchVoice(rawSaid){
+  const said = normSpeech(rawSaid);
   if(handleVoiceAsk(said)) return null;   // すでにsayResultで応答済みなので二重に喋らせない
 
   const cmds = voiceCommands();
