@@ -1064,9 +1064,10 @@ body.day .dayRow{border-bottom-color:rgba(0,0,0,.1)}
 <div id="vcmd">
   <div id="vcTop">
     <h2>🎙 使える言葉</h2>
-    <button id="vcX">閉じる</button>
+    <button id="vcX">✕ 閉じる</button>
   </div>
   <div id="vcBody"></div>
+  <button class="btn primary" id="vcX2" style="margin-top:16px">稼働の画面に戻る</button>
   <div style="height:20px"></div>
 </div>
 
@@ -2100,7 +2101,8 @@ function renderVoiceCmds(){
     }).join("");
 }
 $("wVcmd").onclick = ()=>{ $("vcmd").classList.add("on"); renderVoiceCmds(); };
-$("vcX").onclick = ()=> $("vcmd").classList.remove("on");
+$("vcX").onclick  = ()=> $("vcmd").classList.remove("on");
+$("vcX2").onclick = ()=>{ $("vcmd").classList.remove("on"); show("work"); };
 
 // 声の読み上げは対応端末が多いので、SRが使える時点でひとまず表示しておく。
 // 実際に押したときに使えなければ、そこでエラーにして案内する。
